@@ -1,0 +1,78 @@
+# Configuration nginx pour Linux Update Manager
+# Copiez ce fichier dans /etc/nginx/sites-available/
+# et créez un lien symbolique dans /etc/nginx/sites-enabled/
+
+server {
+    listen 80;
+    server_name update-manager.example.com;  # Changez ceci
+
+    # Redirection HTTP vers HTTPS (optionnel mais recommandé)
+    # Décommentez après avoir configuré SSL
+    # return 301 https://$server_name$request_uri;
+
+    access_log /var/log/nginx/update-manager-access.log;
+    error_log /var/log/nginx/update-manager-error.log;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support (si nécessaire dans le futur)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Timeouts pour les opérations longues
+        proxy_connect_timeout 600;
+        proxy_send_timeout 600;
+        proxy_read_timeout 600;
+        send_timeout 600;
+    }
+
+    # Fichiers statiques (optionnel, Flask peut les servir)
+    location /static {
+        alias /opt/linux-update-management/static;
+        expires 30d;
+    }
+}
+
+# Configuration HTTPS (optionnel mais recommandé en production)
+# Décommentez après avoir obtenu un certificat SSL (Let's Encrypt recommandé)
+#
+# server {
+#     listen 443 ssl http2;
+#     server_name update-manager.example.com;
+#
+#     ssl_certificate /etc/letsencrypt/live/update-manager.example.com/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/update-manager.example.com/privkey.pem;
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#     ssl_ciphers HIGH:!aNULL:!MD5;
+#
+#     access_log /var/log/nginx/update-manager-ssl-access.log;
+#     error_log /var/log/nginx/update-manager-ssl-error.log;
+#
+#     location / {
+#         proxy_pass http://127.0.0.1:5000;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#
+#         proxy_connect_timeout 600;
+#         proxy_send_timeout 600;
+#         proxy_read_timeout 600;
+#         send_timeout 600;
+#     }
+#
+#     location /static {
+#         alias /opt/linux-update-management/static;
+#         expires 30d;
+#     }
+# }

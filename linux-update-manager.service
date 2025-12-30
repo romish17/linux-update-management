@@ -1,0 +1,16 @@
+[Unit]
+Description=Linux Update Manager
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/linux-update-management
+Environment="PATH=/opt/linux-update-management/venv/bin"
+ExecStart=/opt/linux-update-management/venv/bin/python app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

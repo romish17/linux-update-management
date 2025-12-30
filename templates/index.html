@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux Update Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🐧 Linux Update Manager</h1>
+            <p>Gestion centralisée des mises à jour Linux</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Statistics Dashboard -->
+        <section class="stats-section">
+            <div class="stat-card">
+                <h3>Serveurs</h3>
+                <p class="stat-value" id="total-servers">0</p>
+            </div>
+            <div class="stat-card warning">
+                <h3>MAJ disponibles</h3>
+                <p class="stat-value" id="servers-with-updates">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Total paquets</h3>
+                <p class="stat-value" id="total-updates">0</p>
+            </div>
+        </section>
+
+        <!-- Add Server Form -->
+        <section class="add-server-section">
+            <button id="toggle-form-btn" class="btn btn-primary">➕ Ajouter un serveur</button>
+
+            <div id="add-server-form" class="form-container" style="display: none;">
+                <h2>Ajouter un nouveau serveur</h2>
+                <form id="server-form">
+                    <div class="form-group">
+                        <label for="name">Nom du serveur *</label>
+                        <input type="text" id="name" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="hostname">Hostname/IP *</label>
+                        <input type="text" id="hostname" name="hostname" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="port">Port SSH</label>
+                            <input type="number" id="port" name="port" value="22">
+                        </div>
+                        <div class="form-group">
+                            <label for="username">Utilisateur *</label>
+                            <input type="text" id="username" name="username" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="os_type">Système d'exploitation *</label>
+                            <select id="os_type" name="os_type" required>
+                                <option value="debian">Debian/Ubuntu</option>
+                                <option value="almalinux">AlmaLinux/RHEL/CentOS</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ssh_key_path">Chemin clé SSH</label>
+                            <input type="text" id="ssh_key_path" name="ssh_key_path" placeholder="/home/user/.ssh/id_rsa">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Ajouter</button>
+                        <button type="button" id="cancel-form-btn" class="btn btn-secondary">Annuler</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- Servers List -->
+        <section class="servers-section">
+            <h2>Serveurs</h2>
+            <div id="servers-list" class="servers-grid">
+                <!-- Servers will be dynamically added here -->
+            </div>
+        </section>
+
+        <!-- History Section -->
+        <section class="history-section">
+            <h2>Historique récent</h2>
+            <div id="history-list" class="history-container">
+                <!-- History will be dynamically added here -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Loading Modal -->
+    <div id="loading-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="loader"></div>
+            <p id="loading-text">Chargement...</p>
+        </div>
+    </div>
+
+    <!-- Output Modal -->
+    <div id="output-modal" class="modal" style="display: none;">
+        <div class="modal-content output-modal">
+            <span class="close">&times;</span>
+            <h2 id="output-title">Résultat</h2>
+            <pre id="output-content"></pre>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

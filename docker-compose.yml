@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  linux-update-manager:
+    build: .
+    container_name: linux-update-manager
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persist database
+      - ./data:/app/data
+      # Mount SSH keys (read-only)
+      - ~/.ssh:/root/.ssh:ro
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DATABASE_URL=sqlite:///data/updates.db
+    restart: unless-stopped
+    networks:
+      - update-manager-network
+
+networks:
+  update-manager-network:
+    driver: bridge

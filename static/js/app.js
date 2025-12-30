@@ -103,9 +103,11 @@ function renderServers() {
                 </div>
             ` : ''}
             <div class="server-actions">
-                <button class="btn btn-info" onclick="checkUpdates(${server.id})">🔍 Vérifier</button>
+                <button class="btn btn-info" onclick="checkUpdates(${server.id}, false)">🔍 Vérifier tout</button>
+                <button class="btn btn-info" onclick="checkUpdates(${server.id}, true)">🔐 Vérifier sécurité</button>
                 ${server.updates_available > 0 ? `
-                    <button class="btn btn-success" onclick="applyUpdates(${server.id})">⬆️ Mettre à jour</button>
+                    <button class="btn btn-success" onclick="applyUpdates(${server.id}, false)">⬆️ Tout mettre à jour</button>
+                    <button class="btn btn-warning" onclick="applyUpdates(${server.id}, true)">🔐 MAJ sécurité</button>
                 ` : ''}
                 <button class="btn btn-danger" onclick="deleteServer(${server.id})">🗑️ Supprimer</button>
             </div>
@@ -133,17 +135,79 @@ function renderHistory() {
         return;
     }
 
-    container.innerHTML = history.slice(0, 20).map(item => `
-        <div class="history-item">
-            <div class="history-info">
-                <h4>${item.server_name || 'Serveur inconnu'}</h4>
-                <p>${new Date(item.created_at).toLocaleString('fr-FR')} - ${item.action === 'check' ? 'Vérification' : item.action === 'update' ? 'Mise à jour' : 'Erreur'} - ${item.packages_count} paquet(s)</p>
+    container.innerHTML = history.slice(0, 20).map(item => {
+        const actionLabel = item.action === 'check' ? 'Vérification' :
+                           item.action === 'security_update' ? 'MAJ Sécurité' :
+                           item.action === 'update' ? 'Mise à jour' : 'Erreur';
+
+        const typeLabel = item.update_type === 'security' ? ' 🔐 Sécurité' :
+                         item.update_type === 'all' ? ' 📦 Toutes' : '';
+
+        const duration = item.duration ? ` (${item.duration.toFixed(1)}s)` : '';
+
+        // Build package summary
+        let packageSummary = '';
+        if (item.package_list && item.package_list.length > 0) {
+            const pkgCount = item.package_list.length;
+            const pkgNames = item.package_list.slice(0, 3).map(p => p.name).join(', ');
+            packageSummary = `<br><small>Paquets: ${pkgNames}${pkgCount > 3 ? `, +${pkgCount - 3} autres` : ''}</small>`;
+        }
+
+        return `
+            <div class="history-item" onclick="showHistoryDetails(${item.id})" style="cursor: pointer;">
+                <div class="history-info">
+                    <h4>${item.server_name || 'Serveur inconnu'} ${item.server_hostname ? `(${item.server_hostname})` : ''}</h4>
+                    <p>
+                        ${new Date(item.created_at).toLocaleString('fr-FR')} - ${actionLabel}${typeLabel} - ${item.packages_count} paquet(s)${duration}
+                        ${packageSummary}
+                    </p>
+                </div>
+                <span class="history-badge badge-${item.action}">
+                    ${item.success ? '✓' : '✗'}
+                </span>
             </div>
-            <span class="history-badge badge-${item.action}">
-                ${item.success ? '✓' : '✗'} ${item.action}
-            </span>
-        </div>
-    `).join('');
+        `;
+    }).join('');
+}
+
+// Show history details
+function showHistoryDetails(historyId) {
+    const item = history.find(h => h.id === historyId);
+    if (!item) return;
+
+    let content = `Serveur: ${item.server_name} (${item.server_hostname})\n`;
+    content += `Date: ${new Date(item.created_at).toLocaleString('fr-FR')}\n`;
+    content += `Action: ${item.action}\n`;
+    content += `Type: ${item.update_type}\n`;
+    content += `Succès: ${item.success ? 'Oui' : 'Non'}\n`;
+    content += `Paquets: ${item.packages_count}\n`;
+    if (item.duration) {
+        content += `Durée: ${item.duration.toFixed(2)} secondes\n`;
+    }
+
+    if (item.package_list && item.package_list.length > 0) {
+        content += `\n=== Liste des paquets (${item.package_list.length}) ===\n\n`;
+        item.package_list.forEach((pkg, idx) => {
+            content += `${idx + 1}. ${pkg.name}`;
+            if (pkg.version) {
+                content += ` - ${pkg.version}`;
+            } else if (pkg.old_version && pkg.new_version) {
+                content += ` (${pkg.old_version} → ${pkg.new_version})`;
+            } else if (pkg.new_version) {
+                content += ` - ${pkg.new_version}`;
+            }
+            if (pkg.is_security) {
+                content += ' [SÉCURITÉ]';
+            }
+            content += '\n';
+        });
+    }
+
+    if (item.output) {
+        content += `\n=== Sortie complète ===\n\n${item.output}`;
+    }
+
+    showOutput('Détails de l\'historique', content);
 }
 
 // Add server
@@ -210,12 +274,17 @@ async function deleteServer(serverId) {
 }
 
 // Check updates
-async function checkUpdates(serverId) {
-    showLoading('Vérification des mises à jour...');
+async function checkUpdates(serverId, securityOnly = false) {
+    const message = securityOnly ? 'Vérification des mises à jour de sécurité...' : 'Vérification des mises à jour...';
+    showLoading(message);
 
     try {
         const response = await fetch(`/api/servers/${serverId}/check`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ security_only: securityOnly })
         });
 
         const data = await response.json();
@@ -225,7 +294,26 @@ async function checkUpdates(serverId) {
             await loadServers();
             await loadStats();
             await loadHistory();
-            showOutput('Résultat de la vérification', data.output || 'Vérification terminée');
+
+            // Show detailed package list if available
+            let output = data.output || 'Vérification terminée';
+            if (data.packages && data.packages.length > 0) {
+                output = `Mises à jour disponibles: ${data.packages.length}\n\n`;
+                output += 'Liste des paquets:\n';
+                data.packages.forEach(pkg => {
+                    output += `\n- ${pkg.name}`;
+                    if (pkg.old_version && pkg.new_version) {
+                        output += ` (${pkg.old_version} → ${pkg.new_version})`;
+                    } else if (pkg.new_version) {
+                        output += ` (version: ${pkg.new_version})`;
+                    }
+                    if (pkg.is_security) {
+                        output += ' [SÉCURITÉ]';
+                    }
+                });
+            }
+
+            showOutput('Résultat de la vérification', output);
         } else {
             showMessage('Erreur: ' + (data.error || data.message || 'Une erreur est survenue'), true);
         }
@@ -236,16 +324,28 @@ async function checkUpdates(serverId) {
 }
 
 // Apply updates
-async function applyUpdates(serverId) {
-    if (!confirm('Êtes-vous sûr de vouloir appliquer les mises à jour ? Cette opération peut prendre plusieurs minutes.')) {
+async function applyUpdates(serverId, securityOnly = false) {
+    const confirmMsg = securityOnly
+        ? 'Êtes-vous sûr de vouloir appliquer uniquement les mises à jour de sécurité ? Cette opération peut prendre plusieurs minutes.'
+        : 'Êtes-vous sûr de vouloir appliquer toutes les mises à jour ? Cette opération peut prendre plusieurs minutes.';
+
+    if (!confirm(confirmMsg)) {
         return;
     }
 
-    showLoading('Application des mises à jour en cours...');
+    const loadingMsg = securityOnly
+        ? 'Application des mises à jour de sécurité en cours...'
+        : 'Application des mises à jour en cours...';
+
+    showLoading(loadingMsg);
 
     try {
         const response = await fetch(`/api/servers/${serverId}/update`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ security_only: securityOnly })
         });
 
         const data = await response.json();
@@ -255,7 +355,22 @@ async function applyUpdates(serverId) {
             await loadServers();
             await loadStats();
             await loadHistory();
-            showOutput('Résultat de la mise à jour', data.output || 'Mise à jour terminée');
+
+            // Show detailed package list if available
+            let output = data.output || 'Mise à jour terminée';
+            if (data.packages && data.packages.length > 0) {
+                output = `${data.packages.length} paquet(s) installé(s)\n\n`;
+                output += 'Paquets installés:\n';
+                data.packages.forEach(pkg => {
+                    output += `\n- ${pkg.name}`;
+                    if (pkg.version) {
+                        output += ` (${pkg.version})`;
+                    }
+                });
+                output += '\n\n--- Détails complets ---\n\n' + data.output;
+            }
+
+            showOutput('Résultat de la mise à jour', output);
         } else {
             showMessage('Erreur: ' + (data.error || data.message || 'Une erreur est survenue'), true);
         }

@@ -166,6 +166,17 @@ header p {
     background: #059669;
 }
 
+.btn-warning {
+    background: #f59e0b;
+    color: white;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+}
+
+.btn-warning:hover {
+    background: #d97706;
+}
+
 .btn-danger {
     background: #ef4444;
     color: white;
@@ -344,6 +355,11 @@ header p {
 .badge-update {
     background: #d1fae5;
     color: #065f46;
+}
+
+.badge-security_update {
+    background: #fef3c7;
+    color: #92400e;
 }
 
 .badge-error {

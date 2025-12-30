@@ -4,6 +4,8 @@ from config import Config
 from models import db, Server, UpdateHistory
 from ssh_manager import SSHManager, get_update_manager
 import os
+import json
+import time
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -65,8 +67,11 @@ def delete_server(server_id):
 def check_updates(server_id):
     """Check for updates on a server"""
     server = Server.query.get_or_404(server_id)
+    security_only = request.json.get('security_only', False) if request.json else False
 
     try:
+        start_time = time.time()
+
         ssh = SSHManager(
             hostname=server.hostname,
             port=server.port,
@@ -81,8 +86,10 @@ def check_updates(server_id):
 
             history = UpdateHistory(
                 server_id=server.id,
+                server_hostname=server.hostname,
                 action='check',
                 success=False,
+                duration=time.time() - start_time,
                 output=f"Connection failed: {connect_result[1]}"
             )
             db.session.add(history)
@@ -96,7 +103,7 @@ def check_updates(server_id):
         server.status = 'online'
 
         update_manager = get_update_manager(server.os_type)
-        result = update_manager.check_updates(ssh)
+        result = update_manager.check_updates(ssh, security_only=security_only)
 
         ssh.disconnect()
 
@@ -105,9 +112,13 @@ def check_updates(server_id):
 
         history = UpdateHistory(
             server_id=server.id,
+            server_hostname=server.hostname,
             action='check',
+            update_type='security' if security_only else 'all',
             packages_count=result['count'],
+            package_list=json.dumps(result.get('packages', [])),
             success=result['success'],
+            duration=time.time() - start_time,
             output=result['output']
         )
 
@@ -117,6 +128,7 @@ def check_updates(server_id):
         return jsonify({
             'success': True,
             'updates_available': result['count'],
+            'packages': result.get('packages', []),
             'output': result['output']
         })
 
@@ -134,8 +146,11 @@ def check_updates(server_id):
 def apply_updates(server_id):
     """Apply updates on a server"""
     server = Server.query.get_or_404(server_id)
+    security_only = request.json.get('security_only', False) if request.json else False
 
     try:
+        start_time = time.time()
+
         ssh = SSHManager(
             hostname=server.hostname,
             port=server.port,
@@ -157,7 +172,7 @@ def apply_updates(server_id):
         db.session.commit()
 
         update_manager = get_update_manager(server.os_type)
-        result = update_manager.apply_updates(ssh)
+        result = update_manager.apply_updates(ssh, security_only=security_only)
 
         ssh.disconnect()
 
@@ -165,11 +180,17 @@ def apply_updates(server_id):
         server.updates_available = 0
         server.last_check = datetime.utcnow()
 
+        action = 'security_update' if security_only else 'update'
+
         history = UpdateHistory(
             server_id=server.id,
-            action='update',
+            server_hostname=server.hostname,
+            action=action,
+            update_type='security' if security_only else 'all',
             packages_count=result['count'],
+            package_list=json.dumps(result.get('packages', [])),
             success=result['success'],
+            duration=time.time() - start_time,
             output=result['output']
         )
 
@@ -179,6 +200,7 @@ def apply_updates(server_id):
         return jsonify({
             'success': True,
             'packages_updated': result['count'],
+            'packages': result.get('packages', []),
             'output': result['output']
         })
 

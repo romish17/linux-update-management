@@ -1,5 +1,6 @@
 import paramiko
 import re
+import json
 from config import Config
 
 
@@ -81,7 +82,7 @@ class DebianUpdateManager:
     """Manage updates for Debian-based systems"""
 
     @staticmethod
-    def check_updates(ssh_manager):
+    def check_updates(ssh_manager, security_only=False):
         """Check for available updates"""
         # Update package lists
         ssh_manager.execute_command('sudo apt-get update')
@@ -91,37 +92,90 @@ class DebianUpdateManager:
 
         if result['success']:
             lines = [line for line in result['output'].split('\n') if line.strip()]
-            count = len(lines)
+
+            # Parse package details
+            packages = []
+            for line in lines:
+                # Format: package/version arch version [arch]
+                match = re.match(r'(\S+)/\S+\s+(\S+)\s+\S+\s+\[upgradable from:\s+(\S+)\]', line)
+                if match:
+                    pkg_name = match.group(1)
+                    new_version = match.group(2)
+                    old_version = match.group(3)
+
+                    # Check if it's a security update
+                    is_security = '-security' in line or 'security' in line.lower()
+
+                    packages.append({
+                        'name': pkg_name,
+                        'old_version': old_version,
+                        'new_version': new_version,
+                        'is_security': is_security
+                    })
+
+            # Filter security updates if requested
+            if security_only:
+                packages = [p for p in packages if p['is_security']]
+
             return {
                 'success': True,
-                'count': count,
+                'count': len(packages),
+                'packages': packages,
                 'output': result['output']
             }
         return {
             'success': False,
             'count': 0,
+            'packages': [],
             'output': result['error']
         }
 
     @staticmethod
-    def apply_updates(ssh_manager):
-        """Apply all available updates"""
-        result = ssh_manager.execute_command('sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y')
+    def apply_updates(ssh_manager, security_only=False):
+        """Apply all available updates or security updates only"""
+        if security_only:
+            # Install only security updates
+            result = ssh_manager.execute_command(
+                'sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -o Dir::Etc::SourceList=/etc/apt/sources.list.d/security.list'
+            )
+            # Alternative method using unattended-upgrades
+            if not result['success']:
+                result = ssh_manager.execute_command(
+                    'sudo DEBIAN_FRONTEND=noninteractive unattended-upgrade -d'
+                )
+        else:
+            # Apply all updates
+            result = ssh_manager.execute_command('sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y')
 
         if result['success']:
-            # Parse output to count updated packages
+            # Parse output to extract package details
             output = result['output']
+
+            # Get count of upgraded packages
             match = re.search(r'(\d+)\s+upgraded', output)
             count = int(match.group(1)) if match else 0
+
+            # Extract package names and versions from output
+            packages = []
+            for line in output.split('\n'):
+                # Match lines like: "Setting up package-name (version) ..."
+                match = re.match(r'Setting up (\S+)\s+\(([^)]+)\)', line)
+                if match:
+                    packages.append({
+                        'name': match.group(1),
+                        'version': match.group(2)
+                    })
 
             return {
                 'success': True,
                 'count': count,
+                'packages': packages,
                 'output': output
             }
         return {
             'success': False,
             'count': 0,
+            'packages': [],
             'output': result['error']
         }
 
@@ -130,54 +184,102 @@ class AlmaLinuxUpdateManager:
     """Manage updates for RHEL-based systems (AlmaLinux, CentOS, Rocky)"""
 
     @staticmethod
-    def check_updates(ssh_manager):
+    def check_updates(ssh_manager, security_only=False):
         """Check for available updates"""
         # Try dnf first, fall back to yum
         result = ssh_manager.execute_command('which dnf')
         pkg_manager = 'dnf' if result['success'] else 'yum'
 
-        result = ssh_manager.execute_command(f'{pkg_manager} check-update -q')
+        if security_only:
+            # Check for security updates only
+            result = ssh_manager.execute_command(f'{pkg_manager} updateinfo list security --available')
+        else:
+            result = ssh_manager.execute_command(f'{pkg_manager} check-update -q')
 
         # check-update returns exit code 100 if updates are available
-        if result['exit_status'] in [0, 100]:
-            lines = [line for line in result['output'].split('\n') if line.strip() and not line.startswith('Last metadata')]
-            count = len([l for l in lines if '.' in l])  # Filter actual package lines
+        if result['exit_status'] in [0, 100] or result['success']:
+            lines = [line for line in result['output'].split('\n') if line.strip()]
+
+            # Parse package details
+            packages = []
+            for line in lines:
+                if not line.strip() or line.startswith('Last metadata') or line.startswith('Security:'):
+                    continue
+
+                # Format: package.arch version repo
+                parts = line.split()
+                if len(parts) >= 3 and '.' in parts[0]:
+                    pkg_name = parts[0]
+                    new_version = parts[1]
+                    repo = parts[2] if len(parts) > 2 else 'unknown'
+
+                    is_security = 'security' in repo.lower() or security_only
+
+                    packages.append({
+                        'name': pkg_name,
+                        'new_version': new_version,
+                        'repo': repo,
+                        'is_security': is_security
+                    })
 
             return {
                 'success': True,
-                'count': count,
+                'count': len(packages),
+                'packages': packages,
                 'output': result['output']
             }
         return {
             'success': False,
             'count': 0,
+            'packages': [],
             'output': result['error']
         }
 
     @staticmethod
-    def apply_updates(ssh_manager):
-        """Apply all available updates"""
+    def apply_updates(ssh_manager, security_only=False):
+        """Apply all available updates or security updates only"""
         result = ssh_manager.execute_command('which dnf')
         pkg_manager = 'dnf' if result['success'] else 'yum'
 
-        result = ssh_manager.execute_command(f'sudo {pkg_manager} update -y')
+        if security_only:
+            # Apply security updates only
+            result = ssh_manager.execute_command(f'sudo {pkg_manager} update --security -y')
+        else:
+            # Apply all updates
+            result = ssh_manager.execute_command(f'sudo {pkg_manager} update -y')
 
         if result['success'] or result['exit_status'] == 0:
-            # Parse output to count updated packages
+            # Parse output to extract package details
             output = result['output']
-            match = re.search(r'Complete!', output)
 
-            # Count "Upgraded:" or "Installed:" lines
-            upgraded = len(re.findall(r'^\s+\S+\s+\S+\s+\S+', output, re.MULTILINE))
+            # Extract installed/upgraded packages
+            packages = []
+            in_transaction = False
+            for line in output.split('\n'):
+                if 'Installing:' in line or 'Upgrading:' in line:
+                    in_transaction = True
+                    continue
+                if in_transaction and line.strip():
+                    # Format: " package-name arch version repo size"
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        packages.append({
+                            'name': parts[0],
+                            'version': parts[2] if len(parts) > 2 else parts[1]
+                        })
+                if 'Complete!' in line:
+                    break
 
             return {
                 'success': True,
-                'count': upgraded,
+                'count': len(packages),
+                'packages': packages,
                 'output': output
             }
         return {
             'success': False,
             'count': 0,
+            'packages': [],
             'output': result['error']
         }
 

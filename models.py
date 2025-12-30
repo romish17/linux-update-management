@@ -40,22 +40,31 @@ class UpdateHistory(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     server_id = db.Column(db.Integer, db.ForeignKey('servers.id'), nullable=False)
-    action = db.Column(db.String(50), nullable=False)  # 'check', 'update', 'error'
+    server_hostname = db.Column(db.String(255))  # Stored for historical tracking
+    action = db.Column(db.String(50), nullable=False)  # 'check', 'update', 'security_update', 'error'
+    update_type = db.Column(db.String(50), default='all')  # 'all', 'security'
     packages_count = db.Column(db.Integer, default=0)
+    package_list = db.Column(db.Text)  # JSON array of package details
     output = db.Column(db.Text)
     success = db.Column(db.Boolean, default=True)
+    duration = db.Column(db.Float)  # Duration in seconds
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     server = db.relationship('Server', back_populates='updates')
 
     def to_dict(self):
+        import json
         return {
             'id': self.id,
             'server_id': self.server_id,
             'server_name': self.server.name if self.server else None,
+            'server_hostname': self.server_hostname,
             'action': self.action,
+            'update_type': self.update_type,
             'packages_count': self.packages_count,
+            'package_list': json.loads(self.package_list) if self.package_list else [],
             'output': self.output,
             'success': self.success,
+            'duration': self.duration,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

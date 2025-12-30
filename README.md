@@ -5,10 +5,16 @@ Application web simple pour gérer les mises à jour de serveurs Linux (AlmaLinu
 ## 📋 Fonctionnalités
 
 - ✅ Gestion centralisée de plusieurs serveurs Linux
-- 🔍 Vérification des mises à jour disponibles
-- ⬆️ Application des mises à jour à distance
-- 📊 Tableau de bord avec statistiques
-- 📜 Historique des opérations
+- 🔍 Vérification des mises à jour disponibles (toutes ou sécurité uniquement)
+- ⬆️ Application des mises à jour à distance (toutes ou sécurité uniquement)
+- 🔐 Mises à jour de sécurité isolées pour installations ciblées
+- 📊 Tableau de bord avec statistiques en temps réel
+- 📜 Historique détaillé des opérations avec :
+  - Liste complète des paquets installés
+  - Versions avant/après mise à jour
+  - Horodatage précis et durée d'exécution
+  - Type de mise à jour (toutes/sécurité)
+  - Nom d'hôte et serveur pour traçabilité
 - 🔐 Connexion SSH sécurisée (clé ou mot de passe)
 - 🎯 Support AlmaLinux/RHEL/CentOS et Debian/Ubuntu
 
@@ -127,19 +133,41 @@ username ALL=(ALL) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get upgrade, 
 
 ### Vérifier les mises à jour
 
-- Cliquer sur "🔍 Vérifier" pour un serveur spécifique
-- La liste des mises à jour disponibles s'affichera
+Vous avez deux options pour vérifier les mises à jour :
+
+- **"🔍 Vérifier tout"** : Vérifie toutes les mises à jour disponibles
+- **"🔐 Vérifier sécurité"** : Vérifie uniquement les mises à jour de sécurité
+
+La liste détaillée des paquets s'affichera avec :
+- Nom du paquet
+- Version actuelle et nouvelle version
+- Indication `[SÉCURITÉ]` pour les mises à jour de sécurité
 
 ### Appliquer les mises à jour
 
-- Si des mises à jour sont disponibles, cliquer sur "⬆️ Mettre à jour"
-- Confirmer l'action
-- Les mises à jour seront appliquées automatiquement
+Vous avez deux options pour appliquer les mises à jour :
+
+- **"⬆️ Tout mettre à jour"** : Applique toutes les mises à jour disponibles
+- **"🔐 MAJ sécurité"** : Applique uniquement les mises à jour de sécurité
+
+Après l'installation :
+- Liste complète des paquets installés
+- Versions installées
+- Sortie détaillée de la commande d'installation
 
 ### Consulter l'historique
 
-- L'historique des 20 dernières opérations est visible en bas de page
-- Pour chaque opération: date, serveur, action, nombre de paquets
+L'historique détaillé est accessible en bas de page :
+
+- **Cliquez sur une entrée** pour voir les détails complets
+- Pour chaque opération :
+  - Date et heure exactes
+  - Serveur et hostname
+  - Type d'action (vérification, mise à jour complète, mise à jour sécurité)
+  - Nombre de paquets
+  - Durée d'exécution
+  - Liste complète des paquets avec versions
+  - Sortie complète de la commande
 
 ## 🐳 Déploiement avec Docker (optionnel)
 

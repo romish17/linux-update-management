@@ -17,3 +17,16 @@ class Config:
     # 'keep' = keep current config, 'new' = install new config, 'old' = keep old without prompting
     DPKG_CONFOLD = True  # Keep existing config files by default
     DPKG_CONFNEW = False  # Don't automatically install new config files
+
+    # Authentication settings
+    AUTH_TYPE = os.environ.get('AUTH_TYPE') or 'local'  # 'local' or 'ldap'
+
+    # LDAP settings (for future integration)
+    LDAP_HOST = os.environ.get('LDAP_HOST') or 'ldap://localhost'
+    LDAP_PORT = int(os.environ.get('LDAP_PORT') or 389)
+    LDAP_BASE_DN = os.environ.get('LDAP_BASE_DN') or 'dc=example,dc=com'
+    LDAP_USER_DN = os.environ.get('LDAP_USER_DN') or 'ou=users,dc=example,dc=com'
+    LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN') or ''
+    LDAP_BIND_PASSWORD = os.environ.get('LDAP_BIND_PASSWORD') or ''
+    LDAP_USERNAME_ATTRIBUTE = os.environ.get('LDAP_USERNAME_ATTRIBUTE') or 'uid'
+    LDAP_USE_TLS = os.environ.get('LDAP_USE_TLS', 'False').lower() == 'true'

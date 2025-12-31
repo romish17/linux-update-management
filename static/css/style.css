@@ -246,6 +246,17 @@ header p {
     background: #2563eb;
 }
 
+.btn-logout {
+    background: #ef4444;
+    color: white;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+}
+
+.btn-logout:hover {
+    background: #dc2626;
+}
+
 /* Servers Section */
 .servers-section {
     margin-bottom: 2rem;

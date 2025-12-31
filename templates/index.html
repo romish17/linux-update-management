@@ -9,8 +9,20 @@
 <body>
     <header>
         <div class="container">
-            <h1>🐧 Linux Update Manager</h1>
-            <p>Gestion centralisée des mises à jour Linux</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>🐧 Linux Update Manager</h1>
+                    <p>Gestion centralisée des mises à jour Linux</p>
+                </div>
+                <div style="text-align: right;">
+                    <p style="color: #666; margin-bottom: 0.5rem;">
+                        👤 <strong>{{ user.username }}</strong>
+                    </p>
+                    <a href="{{ url_for('logout') }}" class="btn btn-logout" style="text-decoration: none;">
+                        🚪 Déconnexion
+                    </a>
+                </div>
+            </div>
         </div>
     </header>
 

@@ -1,7 +1,8 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from datetime import datetime
 from config import Config
-from models import db, Server, UpdateHistory, ScheduledUpdate
+from models import db, Server, UpdateHistory, ScheduledUpdate, User
 from ssh_manager import SSHManager, get_update_manager, check_reboot_required, reboot_server
 from auto_update_manager import AutoUpdateConfigurator
 import os
@@ -13,18 +14,83 @@ app.config.from_object(Config)
 
 db.init_app(app)
 
+# Setup Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Veuillez vous connecter pour accéder à cette page.'
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
 # Create tables
 with app.app_context():
     db.create_all()
 
 
 @app.route('/')
+@login_required
 def index():
     """Main page"""
-    return render_template('index.html')
+    return render_template('index.html', user=current_user)
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        data = request.get_json() if request.is_json else request.form
+        username = data.get('username')
+        password = data.get('password')
+
+        if not username or not password:
+            if request.is_json:
+                return jsonify({'error': 'Nom d\'utilisateur et mot de passe requis'}), 400
+            flash('Nom d\'utilisateur et mot de passe requis', 'error')
+            return render_template('login.html')
+
+        user = User.query.filter_by(username=username).first()
+
+        if user and user.is_active and user.check_password(password):
+            # Update last login
+            user.last_login = datetime.utcnow()
+            db.session.commit()
+
+            login_user(user, remember=True)
+
+            if request.is_json:
+                return jsonify({
+                    'success': True,
+                    'message': 'Connexion réussie',
+                    'redirect': url_for('index')
+                })
+
+            next_page = request.args.get('next')
+            return redirect(next_page if next_page else url_for('index'))
+        else:
+            if request.is_json:
+                return jsonify({'error': 'Nom d\'utilisateur ou mot de passe incorrect'}), 401
+            flash('Nom d\'utilisateur ou mot de passe incorrect', 'error')
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Logout current user"""
+    logout_user()
+    flash('Vous avez été déconnecté avec succès', 'success')
+    return redirect(url_for('login'))
 
 
 @app.route('/api/servers', methods=['GET'])
+@login_required
 def get_servers():
     """Get all servers"""
     servers = Server.query.all()
@@ -32,6 +98,7 @@ def get_servers():
 
 
 @app.route('/api/servers', methods=['POST'])
+@login_required
 def add_server():
     """Add a new server"""
     data = request.json
@@ -56,6 +123,7 @@ def add_server():
 
 
 @app.route('/api/servers/<int:server_id>', methods=['PUT'])
+@login_required
 def update_server(server_id):
     """Update a server"""
     server = Server.query.get_or_404(server_id)
@@ -80,6 +148,7 @@ def update_server(server_id):
 
 
 @app.route('/api/servers/<int:server_id>', methods=['DELETE'])
+@login_required
 def delete_server(server_id):
     """Delete a server"""
     server = Server.query.get_or_404(server_id)
@@ -89,6 +158,7 @@ def delete_server(server_id):
 
 
 @app.route('/api/servers/<int:server_id>/check', methods=['POST'])
+@login_required
 def check_updates(server_id):
     """Check for updates on a server"""
     server = Server.query.get_or_404(server_id)
@@ -168,6 +238,7 @@ def check_updates(server_id):
 
 
 @app.route('/api/servers/<int:server_id>/update', methods=['POST'])
+@login_required
 def apply_updates(server_id):
     """Apply updates on a server"""
     server = Server.query.get_or_404(server_id)
@@ -258,6 +329,7 @@ def apply_updates(server_id):
 
 
 @app.route('/api/history', methods=['GET'])
+@login_required
 def get_history():
     """Get update history"""
     server_id = request.args.get('server_id', type=int)
@@ -271,6 +343,7 @@ def get_history():
 
 
 @app.route('/api/stats', methods=['GET'])
+@login_required
 def get_stats():
     """Get statistics"""
     total_servers = Server.query.count()
@@ -322,6 +395,7 @@ def get_stats():
 # ========== Scheduled Updates Routes ==========
 
 @app.route('/api/servers/<int:server_id>/schedules', methods=['GET'])
+@login_required
 def get_server_schedules(server_id):
     """Get all schedules for a server"""
     server = Server.query.get_or_404(server_id)
@@ -330,6 +404,7 @@ def get_server_schedules(server_id):
 
 
 @app.route('/api/servers/<int:server_id>/schedules', methods=['POST'])
+@login_required
 def create_schedule(server_id):
     """Create a new update schedule for a server"""
     server = Server.query.get_or_404(server_id)
@@ -416,6 +491,7 @@ def create_schedule(server_id):
 
 
 @app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
+@login_required
 def update_schedule(schedule_id):
     """Update an existing schedule"""
     schedule = ScheduledUpdate.query.get_or_404(schedule_id)
@@ -475,6 +551,7 @@ def update_schedule(schedule_id):
 
 
 @app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
+@login_required
 def delete_schedule(schedule_id):
     """Delete a schedule"""
     schedule = ScheduledUpdate.query.get_or_404(schedule_id)
@@ -506,6 +583,7 @@ def delete_schedule(schedule_id):
 
 
 @app.route('/api/servers/<int:server_id>/auto-update-status', methods=['GET'])
+@login_required
 def get_auto_update_status(server_id):
     """Check automatic update configuration status on a server"""
     server = Server.query.get_or_404(server_id)

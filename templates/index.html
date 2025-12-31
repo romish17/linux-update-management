@@ -18,16 +18,41 @@
         <!-- Statistics Dashboard -->
         <section class="stats-section">
             <div class="stat-card">
-                <h3>Serveurs</h3>
+                <div class="stat-icon">🖥️</div>
+                <h3>Total Serveurs</h3>
                 <p class="stat-value" id="total-servers">0</p>
+                <p class="stat-detail">
+                    <span class="stat-online" id="servers-online">0</span> en ligne ·
+                    <span class="stat-offline" id="servers-offline">0</span> hors ligne
+                </p>
             </div>
             <div class="stat-card warning">
+                <div class="stat-icon">⚠️</div>
                 <h3>MAJ disponibles</h3>
                 <p class="stat-value" id="servers-with-updates">0</p>
+                <p class="stat-detail"><span id="total-updates">0</span> paquets au total</p>
             </div>
-            <div class="stat-card">
-                <h3>Total paquets</h3>
-                <p class="stat-value" id="total-updates">0</p>
+            <div class="stat-card success">
+                <div class="stat-icon">📦</div>
+                <h3>MAJ récentes</h3>
+                <p class="stat-value" id="updates-last-24h">0</p>
+                <p class="stat-detail">Dernières 24h</p>
+            </div>
+            <div class="stat-card info">
+                <div class="stat-icon">🐧</div>
+                <h3>Distribution</h3>
+                <p class="stat-value-small">
+                    <span id="servers-debian">0</span> Debian
+                </p>
+                <p class="stat-value-small">
+                    <span id="servers-almalinux">0</span> AlmaLinux
+                </p>
+            </div>
+            <div class="stat-card schedule">
+                <div class="stat-icon">📅</div>
+                <h3>Planifications</h3>
+                <p class="stat-value" id="enabled-schedules">0</p>
+                <p class="stat-detail"><span id="total-schedules">0</span> au total</p>
             </div>
         </section>
 
@@ -79,9 +104,22 @@
 
         <!-- Servers List -->
         <section class="servers-section">
-            <h2>Serveurs</h2>
+            <div class="section-header">
+                <h2>Serveurs</h2>
+                <div class="view-toggle">
+                    <button id="view-grid-btn" class="btn btn-view active" title="Vue grille">
+                        <span>⊞</span> Grille
+                    </button>
+                    <button id="view-table-btn" class="btn btn-view" title="Vue liste">
+                        <span>☰</span> Liste
+                    </button>
+                </div>
+            </div>
             <div id="servers-list" class="servers-grid">
                 <!-- Servers will be dynamically added here -->
+            </div>
+            <div id="servers-table" class="servers-table" style="display: none;">
+                <!-- Servers table will be dynamically added here -->
             </div>
         </section>
 
@@ -108,6 +146,54 @@
             <span class="close">&times;</span>
             <h2 id="output-title">Résultat</h2>
             <pre id="output-content"></pre>
+        </div>
+    </div>
+
+    <!-- Edit Server Modal -->
+    <div id="edit-server-modal" class="modal" style="display: none;">
+        <div class="modal-content edit-modal">
+            <span class="close-edit">&times;</span>
+            <h2>Modifier le serveur</h2>
+
+            <form id="edit-server-form">
+                <input type="hidden" id="edit-server-id">
+
+                <div class="form-group">
+                    <label for="edit-name">Nom du serveur *</label>
+                    <input type="text" id="edit-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-hostname">Hostname/IP *</label>
+                    <input type="text" id="edit-hostname" name="hostname" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-port">Port SSH</label>
+                        <input type="number" id="edit-port" name="port" value="22">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-username">Utilisateur *</label>
+                        <input type="text" id="edit-username" name="username" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-os_type">Système d'exploitation *</label>
+                        <select id="edit-os_type" name="os_type" required>
+                            <option value="debian">Debian/Ubuntu</option>
+                            <option value="almalinux">AlmaLinux/RHEL/CentOS</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-ssh_key_path">Chemin clé SSH</label>
+                        <input type="text" id="edit-ssh_key_path" name="ssh_key_path" placeholder="/home/user/.ssh/id_rsa">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <button type="button" class="btn btn-secondary close-edit">Annuler</button>
+                </div>
+            </form>
         </div>
     </div>
 

@@ -55,6 +55,30 @@ def add_server():
     return jsonify(server.to_dict()), 201
 
 
+@app.route('/api/servers/<int:server_id>', methods=['PUT'])
+def update_server(server_id):
+    """Update a server"""
+    server = Server.query.get_or_404(server_id)
+    data = request.json
+
+    # Update fields
+    if 'name' in data:
+        server.name = data['name']
+    if 'hostname' in data:
+        server.hostname = data['hostname']
+    if 'port' in data:
+        server.port = data['port']
+    if 'username' in data:
+        server.username = data['username']
+    if 'ssh_key_path' in data:
+        server.ssh_key_path = data['ssh_key_path']
+    if 'os_type' in data:
+        server.os_type = data['os_type']
+
+    db.session.commit()
+    return jsonify(server.to_dict()), 200
+
+
 @app.route('/api/servers/<int:server_id>', methods=['DELETE'])
 def delete_server(server_id):
     """Delete a server"""
@@ -252,12 +276,45 @@ def get_stats():
     total_servers = Server.query.count()
     servers_with_updates = Server.query.filter(Server.updates_available > 0).count()
     total_updates = db.session.query(db.func.sum(Server.updates_available)).scalar() or 0
+
+    # Count servers by status
+    servers_online = Server.query.filter(Server.status == 'online').count()
+    servers_offline = Server.query.filter(Server.status == 'offline').count()
+    servers_updating = Server.query.filter(Server.status == 'updating').count()
+
+    # Count servers by OS
+    servers_debian = Server.query.filter(Server.os_type == 'debian').count()
+    servers_almalinux = Server.query.filter(Server.os_type == 'almalinux').count()
+
+    # Count scheduled updates
+    total_schedules = ScheduledUpdate.query.count()
+    enabled_schedules = ScheduledUpdate.query.filter(ScheduledUpdate.enabled == True).count()
+
+    # Recent updates count
+    from datetime import datetime, timedelta
+    last_24h = datetime.utcnow() - timedelta(hours=24)
+    updates_last_24h = UpdateHistory.query.filter(
+        UpdateHistory.created_at >= last_24h,
+        UpdateHistory.action.in_(['update', 'security_update'])
+    ).count()
+
+    # Security updates count
+    security_updates_pending = db.session.query(Server).filter(Server.updates_available > 0).all()
+
     recent_history = UpdateHistory.query.order_by(UpdateHistory.created_at.desc()).limit(10).all()
 
     return jsonify({
         'total_servers': total_servers,
         'servers_with_updates': servers_with_updates,
         'total_updates': total_updates,
+        'servers_online': servers_online,
+        'servers_offline': servers_offline,
+        'servers_updating': servers_updating,
+        'servers_debian': servers_debian,
+        'servers_almalinux': servers_almalinux,
+        'total_schedules': total_schedules,
+        'enabled_schedules': enabled_schedules,
+        'updates_last_24h': updates_last_24h,
         'recent_activity': [h.to_dict() for h in recent_history]
     })
 

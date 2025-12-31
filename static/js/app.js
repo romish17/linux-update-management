@@ -58,8 +58,15 @@ async function loadStats() {
         const data = await response.json();
 
         document.getElementById('total-servers').textContent = data.total_servers;
+        document.getElementById('servers-online').textContent = data.servers_online;
+        document.getElementById('servers-offline').textContent = data.servers_offline;
         document.getElementById('servers-with-updates').textContent = data.servers_with_updates;
         document.getElementById('total-updates').textContent = data.total_updates;
+        document.getElementById('updates-last-24h').textContent = data.updates_last_24h;
+        document.getElementById('servers-debian').textContent = data.servers_debian;
+        document.getElementById('servers-almalinux').textContent = data.servers_almalinux;
+        document.getElementById('enabled-schedules').textContent = data.enabled_schedules;
+        document.getElementById('total-schedules').textContent = data.total_schedules;
     } catch (error) {
         console.error('Error loading stats:', error);
     }
@@ -76,9 +83,25 @@ async function loadServers() {
     }
 }
 
+// View state
+let currentView = 'grid'; // 'grid' or 'table'
+
 // Render servers
 function renderServers() {
+    if (currentView === 'grid') {
+        renderServersGrid();
+    } else {
+        renderServersTable();
+    }
+}
+
+// Render servers in grid view
+function renderServersGrid() {
     const container = document.getElementById('servers-list');
+    const tableContainer = document.getElementById('servers-table');
+
+    tableContainer.style.display = 'none';
+    container.style.display = 'grid';
 
     if (servers.length === 0) {
         container.innerHTML = '<p style="color: white; text-align: center;">Aucun serveur configuré. Ajoutez-en un pour commencer.</p>';
@@ -110,10 +133,94 @@ function renderServers() {
                     <button class="btn btn-warning" onclick="applyUpdates(${server.id}, true)">🔐 MAJ sécurité</button>
                 ` : ''}
                 <button class="btn btn-primary" onclick="openScheduleModal(${server.id})">📅 Planifier</button>
+                <button class="btn btn-secondary" onclick="openEditServerModal(${server.id})">✏️ Modifier</button>
                 <button class="btn btn-danger" onclick="deleteServer(${server.id})">🗑️ Supprimer</button>
             </div>
         </div>
     `).join('');
+}
+
+// Render servers in table view
+function renderServersTable() {
+    const container = document.getElementById('servers-list');
+    const tableContainer = document.getElementById('servers-table');
+
+    container.style.display = 'none';
+    tableContainer.style.display = 'block';
+
+    if (servers.length === 0) {
+        tableContainer.innerHTML = '<p style="color: #666; text-align: center; padding: 2rem;">Aucun serveur configuré. Ajoutez-en un pour commencer.</p>';
+        return;
+    }
+
+    const tableHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Nom</th>
+                    <th>Hostname</th>
+                    <th>OS</th>
+                    <th>Statut</th>
+                    <th>MAJ</th>
+                    <th>Dernière vérif</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${servers.map(server => `
+                    <tr>
+                        <td><strong>${server.name}</strong></td>
+                        <td>${server.hostname}:${server.port}</td>
+                        <td>${server.os_type === 'debian' ? '🐧 Debian' : '🎩 AlmaLinux'}</td>
+                        <td>
+                            <span class="table-status">
+                                <span class="status-indicator ${server.status}"></span>
+                                ${server.status}
+                            </span>
+                        </td>
+                        <td>
+                            ${server.updates_available > 0 ?
+                                `<span class="table-updates-badge">${server.updates_available} MAJ</span>` :
+                                '<span style="color: #10b981;">✓ À jour</span>'
+                            }
+                        </td>
+                        <td>${server.last_check ? new Date(server.last_check).toLocaleString('fr-FR') : 'Jamais'}</td>
+                        <td>
+                            <div class="table-actions">
+                                <button class="btn btn-info" onclick="checkUpdates(${server.id}, false)" title="Vérifier les mises à jour">🔍</button>
+                                ${server.updates_available > 0 ? `
+                                    <button class="btn btn-success" onclick="applyUpdates(${server.id}, false)" title="Appliquer les mises à jour">⬆️</button>
+                                ` : ''}
+                                <button class="btn btn-primary" onclick="openScheduleModal(${server.id})" title="Planifier">📅</button>
+                                <button class="btn btn-secondary" onclick="openEditServerModal(${server.id})" title="Modifier">✏️</button>
+                                <button class="btn btn-danger" onclick="deleteServer(${server.id})" title="Supprimer">🗑️</button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+
+    tableContainer.innerHTML = tableHTML;
+}
+
+// Toggle view
+function toggleView(view) {
+    currentView = view;
+
+    const gridBtn = document.getElementById('view-grid-btn');
+    const tableBtn = document.getElementById('view-table-btn');
+
+    if (view === 'grid') {
+        gridBtn.classList.add('active');
+        tableBtn.classList.remove('active');
+    } else {
+        tableBtn.classList.add('active');
+        gridBtn.classList.remove('active');
+    }
+
+    renderServers();
 }
 
 // Load history
@@ -267,6 +374,70 @@ async function deleteServer(serverId) {
             showMessage('Serveur supprimé avec succès !');
         } else {
             showMessage('Erreur lors de la suppression', true);
+        }
+    } catch (error) {
+        hideLoading();
+        showMessage('Erreur: ' + error.message, true);
+    }
+}
+
+// Open edit server modal
+function openEditServerModal(serverId) {
+    const server = servers.find(s => s.id === serverId);
+    if (!server) return;
+
+    const modal = document.getElementById('edit-server-modal');
+    document.getElementById('edit-server-id').value = server.id;
+    document.getElementById('edit-name').value = server.name;
+    document.getElementById('edit-hostname').value = server.hostname;
+    document.getElementById('edit-port').value = server.port;
+    document.getElementById('edit-username').value = server.username;
+    document.getElementById('edit-os_type').value = server.os_type;
+    document.getElementById('edit-ssh_key_path').value = server.ssh_key_path || '';
+
+    modal.style.display = 'flex';
+}
+
+// Close edit server modal
+function closeEditServerModal() {
+    document.getElementById('edit-server-modal').style.display = 'none';
+}
+
+// Update server
+async function updateServer(event) {
+    event.preventDefault();
+
+    const serverId = document.getElementById('edit-server-id').value;
+    const data = {
+        name: document.getElementById('edit-name').value,
+        hostname: document.getElementById('edit-hostname').value,
+        port: parseInt(document.getElementById('edit-port').value),
+        username: document.getElementById('edit-username').value,
+        os_type: document.getElementById('edit-os_type').value,
+        ssh_key_path: document.getElementById('edit-ssh_key_path').value
+    };
+
+    showLoading('Modification du serveur...');
+
+    try {
+        const response = await fetch(`/api/servers/${serverId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        hideLoading();
+
+        if (response.ok) {
+            closeEditServerModal();
+            await loadServers();
+            await loadStats();
+            showMessage('Serveur modifié avec succès !');
+        } else {
+            const error = await response.json();
+            showMessage('Erreur: ' + (error.error || 'Une erreur est survenue'), true);
         }
     } catch (error) {
         hideLoading();
@@ -612,4 +783,28 @@ document.addEventListener('DOMContentLoaded', () => {
             closeScheduleModal();
         }
     });
+
+    // Setup edit server event listeners
+    const editServerForm = document.getElementById('edit-server-form');
+    const closeEditBtns = document.querySelectorAll('.close-edit');
+    const editServerModal = document.getElementById('edit-server-modal');
+
+    editServerForm.addEventListener('submit', updateServer);
+
+    closeEditBtns.forEach(btn => {
+        btn.addEventListener('click', closeEditServerModal);
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target === editServerModal) {
+            closeEditServerModal();
+        }
+    });
+
+    // Setup view toggle listeners
+    const viewGridBtn = document.getElementById('view-grid-btn');
+    const viewTableBtn = document.getElementById('view-table-btn');
+
+    viewGridBtn.addEventListener('click', () => toggleView('grid'));
+    viewTableBtn.addEventListener('click', () => toggleView('table'));
 });

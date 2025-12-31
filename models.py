@@ -1,5 +1,6 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+import json
 
 db = SQLAlchemy()
 
@@ -53,7 +54,6 @@ class UpdateHistory(db.Model):
     server = db.relationship('Server', back_populates='updates')
 
     def to_dict(self):
-        import json
         return {
             'id': self.id,
             'server_id': self.server_id,
@@ -68,3 +68,49 @@ class UpdateHistory(db.Model):
             'duration': self.duration,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+
+
+class ScheduledUpdate(db.Model):
+    __tablename__ = 'scheduled_updates'
+
+    id = db.Column(db.Integer, primary_key=True)
+    server_id = db.Column(db.Integer, db.ForeignKey('servers.id'), nullable=False)
+    enabled = db.Column(db.Boolean, default=True)
+    schedule_type = db.Column(db.String(20), nullable=False)  # 'weekly', 'daily', 'monthly'
+    day_of_week = db.Column(db.Integer)  # 0=Monday, 6=Sunday (for weekly)
+    day_of_month = db.Column(db.Integer)  # 1-31 (for monthly)
+    hour = db.Column(db.Integer, nullable=False)  # 0-23
+    minute = db.Column(db.Integer, default=0)  # 0-59
+    update_type = db.Column(db.String(20), default='all')  # 'all' or 'security'
+    auto_reboot = db.Column(db.Boolean, default=False)  # Reboot if needed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    server = db.relationship('Server', backref='schedules')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'server_id': self.server_id,
+            'server_name': self.server.name if self.server else None,
+            'enabled': self.enabled,
+            'schedule_type': self.schedule_type,
+            'day_of_week': self.day_of_week,
+            'day_of_month': self.day_of_month,
+            'hour': self.hour,
+            'minute': self.minute,
+            'update_type': self.update_type,
+            'auto_reboot': self.auto_reboot,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+    def get_cron_expression(self):
+        """Generate cron expression from schedule"""
+        if self.schedule_type == 'daily':
+            return f"{self.minute} {self.hour} * * *"
+        elif self.schedule_type == 'weekly':
+            return f"{self.minute} {self.hour} * * {self.day_of_week}"
+        elif self.schedule_type == 'monthly':
+            return f"{self.minute} {self.hour} {self.day_of_month} * *"
+        return None

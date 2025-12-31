@@ -133,10 +133,15 @@ class DebianUpdateManager:
     @staticmethod
     def apply_updates(ssh_manager, security_only=False):
         """Apply all available updates or security updates only"""
+        # Dpkg options to avoid configuration file prompts
+        # --force-confold: keep existing config files
+        # --force-confdef: use default option (usually keep existing)
+        dpkg_opts = '-o Dpkg::Options::="--force-confold" -o Dpkg::Options::="--force-confdef"'
+
         if security_only:
             # Install only security updates
             result = ssh_manager.execute_command(
-                'sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -o Dir::Etc::SourceList=/etc/apt/sources.list.d/security.list'
+                f'sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y {dpkg_opts} -o Dir::Etc::SourceList=/etc/apt/sources.list.d/security.list'
             )
             # Alternative method using unattended-upgrades
             if not result['success']:
@@ -145,7 +150,9 @@ class DebianUpdateManager:
                 )
         else:
             # Apply all updates
-            result = ssh_manager.execute_command('sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y')
+            result = ssh_manager.execute_command(
+                f'sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y {dpkg_opts}'
+            )
 
         if result['success']:
             # Parse output to extract package details

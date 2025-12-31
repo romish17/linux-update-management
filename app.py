@@ -1,8 +1,9 @@
 from flask import Flask, render_template, request, jsonify
 from datetime import datetime
 from config import Config
-from models import db, Server, UpdateHistory
+from models import db, Server, UpdateHistory, ScheduledUpdate
 from ssh_manager import SSHManager, get_update_manager
+from auto_update_manager import AutoUpdateConfigurator
 import os
 import json
 import time
@@ -241,6 +242,221 @@ def get_stats():
         'total_updates': total_updates,
         'recent_activity': [h.to_dict() for h in recent_history]
     })
+
+
+# ========== Scheduled Updates Routes ==========
+
+@app.route('/api/servers/<int:server_id>/schedules', methods=['GET'])
+def get_server_schedules(server_id):
+    """Get all schedules for a server"""
+    server = Server.query.get_or_404(server_id)
+    schedules = ScheduledUpdate.query.filter_by(server_id=server_id).all()
+    return jsonify([s.to_dict() for s in schedules])
+
+
+@app.route('/api/servers/<int:server_id>/schedules', methods=['POST'])
+def create_schedule(server_id):
+    """Create a new update schedule for a server"""
+    server = Server.query.get_or_404(server_id)
+    data = request.json
+
+    required_fields = ['schedule_type', 'hour']
+    if not all(field in data for field in required_fields):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Validate schedule type
+    if data['schedule_type'] not in ['daily', 'weekly', 'monthly']:
+        return jsonify({'error': 'Invalid schedule_type'}), 400
+
+    # Validate day_of_week for weekly schedules
+    if data['schedule_type'] == 'weekly' and 'day_of_week' not in data:
+        return jsonify({'error': 'day_of_week required for weekly schedules'}), 400
+
+    # Validate day_of_month for monthly schedules
+    if data['schedule_type'] == 'monthly' and 'day_of_month' not in data:
+        return jsonify({'error': 'day_of_month required for monthly schedules'}), 400
+
+    schedule = ScheduledUpdate(
+        server_id=server_id,
+        enabled=data.get('enabled', True),
+        schedule_type=data['schedule_type'],
+        day_of_week=data.get('day_of_week'),
+        day_of_month=data.get('day_of_month'),
+        hour=data['hour'],
+        minute=data.get('minute', 0),
+        update_type=data.get('update_type', 'all'),
+        auto_reboot=data.get('auto_reboot', False)
+    )
+
+    db.session.add(schedule)
+    db.session.commit()
+
+    # Configure automatic updates on the server
+    try:
+        ssh = SSHManager(
+            hostname=server.hostname,
+            port=server.port,
+            username=server.username,
+            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+        )
+
+        if not ssh.connect():
+            return jsonify({
+                'error': 'Failed to connect to server',
+                'schedule': schedule.to_dict()
+            }), 500
+
+        configurator = AutoUpdateConfigurator()
+
+        if server.os_type == 'debian':
+            result = configurator.configure_debian_auto_updates(
+                ssh, schedule, schedule.update_type, schedule.auto_reboot
+            )
+        else:  # almalinux
+            result = configurator.configure_almalinux_auto_updates(
+                ssh, schedule, schedule.update_type, schedule.auto_reboot
+            )
+
+        ssh.disconnect()
+
+        if not result['success']:
+            return jsonify({
+                'error': 'Failed to configure automatic updates',
+                'details': result.get('error'),
+                'schedule': schedule.to_dict()
+            }), 500
+
+        return jsonify({
+            'success': True,
+            'schedule': schedule.to_dict(),
+            'configuration': result
+        }), 201
+
+    except Exception as e:
+        return jsonify({
+            'error': 'Error configuring automatic updates',
+            'message': str(e),
+            'schedule': schedule.to_dict()
+        }), 500
+
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
+def update_schedule(schedule_id):
+    """Update an existing schedule"""
+    schedule = ScheduledUpdate.query.get_or_404(schedule_id)
+    data = request.json
+
+    # Update fields
+    if 'enabled' in data:
+        schedule.enabled = data['enabled']
+    if 'schedule_type' in data:
+        schedule.schedule_type = data['schedule_type']
+    if 'day_of_week' in data:
+        schedule.day_of_week = data['day_of_week']
+    if 'day_of_month' in data:
+        schedule.day_of_month = data['day_of_month']
+    if 'hour' in data:
+        schedule.hour = data['hour']
+    if 'minute' in data:
+        schedule.minute = data['minute']
+    if 'update_type' in data:
+        schedule.update_type = data['update_type']
+    if 'auto_reboot' in data:
+        schedule.auto_reboot = data['auto_reboot']
+
+    db.session.commit()
+
+    # Reconfigure on the server
+    server = schedule.server
+    try:
+        ssh = SSHManager(
+            hostname=server.hostname,
+            port=server.port,
+            username=server.username,
+            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+        )
+
+        if ssh.connect():
+            configurator = AutoUpdateConfigurator()
+
+            if server.os_type == 'debian':
+                result = configurator.configure_debian_auto_updates(
+                    ssh, schedule, schedule.update_type, schedule.auto_reboot
+                )
+            else:
+                result = configurator.configure_almalinux_auto_updates(
+                    ssh, schedule, schedule.update_type, schedule.auto_reboot
+                )
+
+            ssh.disconnect()
+
+        return jsonify(schedule.to_dict()), 200
+
+    except Exception as e:
+        return jsonify({
+            'error': 'Error updating configuration',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
+def delete_schedule(schedule_id):
+    """Delete a schedule"""
+    schedule = ScheduledUpdate.query.get_or_404(schedule_id)
+    server = schedule.server
+
+    db.session.delete(schedule)
+    db.session.commit()
+
+    # Remove configuration from server if it's the last schedule
+    remaining_schedules = ScheduledUpdate.query.filter_by(server_id=server.id).count()
+    if remaining_schedules == 0:
+        try:
+            ssh = SSHManager(
+                hostname=server.hostname,
+                port=server.port,
+                username=server.username,
+                ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+            )
+
+            if ssh.connect():
+                configurator = AutoUpdateConfigurator()
+                configurator.remove_auto_updates(ssh, server.os_type)
+                ssh.disconnect()
+
+        except Exception as e:
+            pass  # Don't fail if cleanup fails
+
+    return jsonify({'message': 'Schedule deleted successfully'}), 200
+
+
+@app.route('/api/servers/<int:server_id>/auto-update-status', methods=['GET'])
+def get_auto_update_status(server_id):
+    """Check automatic update configuration status on a server"""
+    server = Server.query.get_or_404(server_id)
+
+    try:
+        ssh = SSHManager(
+            hostname=server.hostname,
+            port=server.port,
+            username=server.username,
+            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+        )
+
+        if not ssh.connect():
+            return jsonify({'error': 'Failed to connect to server'}), 500
+
+        configurator = AutoUpdateConfigurator()
+        status = configurator.get_auto_update_status(ssh, server.os_type)
+        ssh.disconnect()
+
+        return jsonify(status), 200
+
+    except Exception as e:
+        return jsonify({
+            'error': 'Error checking status',
+            'message': str(e)
+        }), 500
 
 
 if __name__ == '__main__':

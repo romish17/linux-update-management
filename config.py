@@ -11,3 +11,9 @@ class Config:
     # SSH settings
     SSH_TIMEOUT = 30
     UPDATE_CHECK_INTERVAL = 3600  # 1 hour in seconds
+
+    # Update configuration options
+    # For Debian: dpkg configuration file behavior
+    # 'keep' = keep current config, 'new' = install new config, 'old' = keep old without prompting
+    DPKG_CONFOLD = True  # Keep existing config files by default
+    DPKG_CONFNEW = False  # Don't automatically install new config files

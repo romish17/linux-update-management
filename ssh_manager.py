@@ -299,3 +299,36 @@ def get_update_manager(os_type):
         return AlmaLinuxUpdateManager()
     else:
         raise ValueError(f"Unsupported OS type: {os_type}")
+
+
+def check_reboot_required(ssh_manager, os_type):
+    """Check if a reboot is required after updates"""
+    if os_type == 'debian':
+        # Debian/Ubuntu creates this file when reboot is needed
+        result = ssh_manager.execute_command('[ -f /var/run/reboot-required ] && echo "reboot_required" || echo "no_reboot"')
+        return 'reboot_required' in result['output']
+    else:  # almalinux
+        # Use needs-restarting command
+        result = ssh_manager.execute_command('needs-restarting -r')
+        # Exit code 1 means reboot required
+        return result['exit_status'] == 1
+
+
+def reboot_server(ssh_manager, delay_minutes=1):
+    """
+    Reboot the server with a delay
+
+    Args:
+        ssh_manager: SSHManager instance
+        delay_minutes: Delay in minutes before reboot (default: 1)
+
+    Returns:
+        dict with success status and message
+    """
+    result = ssh_manager.execute_command(f'sudo shutdown -r +{delay_minutes} "Server rebooting for updates"')
+
+    return {
+        'success': result['success'],
+        'message': f'Server will reboot in {delay_minutes} minute(s)',
+        'output': result['output']
+    }

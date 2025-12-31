@@ -111,6 +111,88 @@
         </div>
     </div>
 
+    <!-- Schedule Modal -->
+    <div id="schedule-modal" class="modal" style="display: none;">
+        <div class="modal-content schedule-modal">
+            <span class="close-schedule">&times;</span>
+            <h2 id="schedule-modal-title">Planifier les mises à jour automatiques</h2>
+
+            <form id="schedule-form">
+                <input type="hidden" id="schedule-server-id">
+                <input type="hidden" id="schedule-id">
+
+                <div class="form-group">
+                    <label for="schedule-type">Fréquence *</label>
+                    <select id="schedule-type" name="schedule_type" required>
+                        <option value="daily">Quotidien</option>
+                        <option value="weekly">Hebdomadaire</option>
+                        <option value="monthly">Mensuel</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="day-of-week-group" style="display: none;">
+                    <label for="day-of-week">Jour de la semaine *</label>
+                    <select id="day-of-week" name="day_of_week">
+                        <option value="0">Lundi</option>
+                        <option value="1">Mardi</option>
+                        <option value="2">Mercredi</option>
+                        <option value="3">Jeudi</option>
+                        <option value="4">Vendredi</option>
+                        <option value="5">Samedi</option>
+                        <option value="6">Dimanche</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="day-of-month-group" style="display: none;">
+                    <label for="day-of-month">Jour du mois *</label>
+                    <input type="number" id="day-of-month" name="day_of_month" min="1" max="31">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="schedule-hour">Heure *</label>
+                        <input type="number" id="schedule-hour" name="hour" min="0" max="23" required value="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="schedule-minute">Minute *</label>
+                        <input type="number" id="schedule-minute" name="minute" min="0" max="59" value="0">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="update-type">Type de mises à jour *</label>
+                    <select id="update-type" name="update_type" required>
+                        <option value="all">Toutes les mises à jour</option>
+                        <option value="security">Sécurité uniquement</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="auto-reboot" name="auto_reboot" checked>
+                        Redémarrer automatiquement si nécessaire
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="schedule-enabled" name="enabled" checked>
+                        Planification active
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <button type="button" class="btn btn-secondary close-schedule">Annuler</button>
+                </div>
+            </form>
+
+            <div id="existing-schedules" style="margin-top: 2rem;">
+                <!-- Existing schedules will be shown here -->
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

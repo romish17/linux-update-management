@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify
 from datetime import datetime
 from config import Config
 from models import db, Server, UpdateHistory, ScheduledUpdate
-from ssh_manager import SSHManager, get_update_manager
+from ssh_manager import SSHManager, get_update_manager, check_reboot_required, reboot_server
 from auto_update_manager import AutoUpdateConfigurator
 import os
 import json
@@ -148,6 +148,7 @@ def apply_updates(server_id):
     """Apply updates on a server"""
     server = Server.query.get_or_404(server_id)
     security_only = request.json.get('security_only', False) if request.json else False
+    auto_reboot = request.json.get('auto_reboot', True) if request.json else True
 
     try:
         start_time = time.time()
@@ -175,6 +176,15 @@ def apply_updates(server_id):
         update_manager = get_update_manager(server.os_type)
         result = update_manager.apply_updates(ssh, security_only=security_only)
 
+        # Check if reboot is needed
+        reboot_required = False
+        reboot_message = ''
+        if result['success'] and auto_reboot:
+            reboot_required = check_reboot_required(ssh, server.os_type)
+            if reboot_required:
+                reboot_result = reboot_server(ssh, delay_minutes=1)
+                reboot_message = reboot_result['message'] if reboot_result['success'] else 'Failed to schedule reboot'
+
         ssh.disconnect()
 
         server.status = 'online'
@@ -182,6 +192,11 @@ def apply_updates(server_id):
         server.last_check = datetime.utcnow()
 
         action = 'security_update' if security_only else 'update'
+
+        # Add reboot info to output if applicable
+        output = result['output']
+        if reboot_required and reboot_message:
+            output += f"\n\n=== REBOOT ===\n{reboot_message}"
 
         history = UpdateHistory(
             server_id=server.id,
@@ -192,7 +207,7 @@ def apply_updates(server_id):
             package_list=json.dumps(result.get('packages', [])),
             success=result['success'],
             duration=time.time() - start_time,
-            output=result['output']
+            output=output
         )
 
         db.session.add(history)
@@ -202,7 +217,10 @@ def apply_updates(server_id):
             'success': True,
             'packages_updated': result['count'],
             'packages': result.get('packages', []),
-            'output': result['output']
+            'reboot_required': reboot_required,
+            'reboot_scheduled': reboot_required and auto_reboot,
+            'reboot_message': reboot_message,
+            'output': output
         })
 
     except Exception as e:

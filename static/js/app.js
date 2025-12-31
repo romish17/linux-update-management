@@ -109,6 +109,7 @@ function renderServers() {
                     <button class="btn btn-success" onclick="applyUpdates(${server.id}, false)">⬆️ Tout mettre à jour</button>
                     <button class="btn btn-warning" onclick="applyUpdates(${server.id}, true)">🔐 MAJ sécurité</button>
                 ` : ''}
+                <button class="btn btn-primary" onclick="openScheduleModal(${server.id})">📅 Planifier</button>
                 <button class="btn btn-danger" onclick="deleteServer(${server.id})">🗑️ Supprimer</button>
             </div>
         </div>
@@ -370,6 +371,13 @@ async function applyUpdates(serverId, securityOnly = false) {
                 output += '\n\n--- Détails complets ---\n\n' + data.output;
             }
 
+            // Add reboot info if applicable
+            if (data.reboot_scheduled) {
+                output += '\n\n⚠️ REDÉMARRAGE PROGRAMMÉ\n' + data.reboot_message;
+            } else if (data.reboot_required) {
+                output += '\n\n⚠️ REDÉMARRAGE NÉCESSAIRE\nLe serveur doit être redémarré pour appliquer complètement les mises à jour.';
+            }
+
             showOutput('Résultat de la mise à jour', output);
         } else {
             showMessage('Erreur: ' + (data.error || data.message || 'Une erreur est survenue'), true);
@@ -408,3 +416,200 @@ function showOutput(title, content) {
 function showMessage(message, isError = false) {
     alert(message);
 }
+
+// ========== Schedule Management ==========
+
+let currentServerId = null;
+
+// Open schedule modal
+async function openScheduleModal(serverId) {
+    currentServerId = serverId;
+    const modal = document.getElementById('schedule-modal');
+    const form = document.getElementById('schedule-form');
+
+    // Reset form
+    form.reset();
+    document.getElementById('schedule-server-id').value = serverId;
+    document.getElementById('schedule-id').value = '';
+    document.getElementById('schedule-type').value = 'weekly';
+    document.getElementById('day-of-week').value = '6'; // Sunday
+    updateScheduleTypeFields();
+
+    // Load existing schedules
+    await loadServerSchedules(serverId);
+
+    modal.style.display = 'flex';
+}
+
+// Close schedule modal
+function closeScheduleModal() {
+    document.getElementById('schedule-modal').style.display = 'none';
+}
+
+// Update schedule type fields visibility
+function updateScheduleTypeFields() {
+    const scheduleType = document.getElementById('schedule-type').value;
+    const dayOfWeekGroup = document.getElementById('day-of-week-group');
+    const dayOfMonthGroup = document.getElementById('day-of-month-group');
+
+    dayOfWeekGroup.style.display = scheduleType === 'weekly' ? 'block' : 'none';
+    dayOfMonthGroup.style.display = scheduleType === 'monthly' ? 'block' : 'none';
+
+    // Set required attributes
+    document.getElementById('day-of-week').required = scheduleType === 'weekly';
+    document.getElementById('day-of-month').required = scheduleType === 'monthly';
+}
+
+// Load server schedules
+async function loadServerSchedules(serverId) {
+    try {
+        const response = await fetch(`/api/servers/${serverId}/schedules`);
+        const schedules = await response.json();
+        renderExistingSchedules(schedules);
+    } catch (error) {
+        console.error('Error loading schedules:', error);
+    }
+}
+
+// Render existing schedules
+function renderExistingSchedules(schedules) {
+    const container = document.getElementById('existing-schedules');
+
+    if (schedules.length === 0) {
+        container.innerHTML = '<p style="color: #666;">Aucune planification configurée.</p>';
+        return;
+    }
+
+    container.innerHTML = '<h3>Planifications existantes</h3>' + schedules.map(schedule => {
+        const scheduleDesc = getScheduleDescription(schedule);
+        const updateTypeLabel = schedule.update_type === 'security' ? '🔐 Sécurité' : '📦 Toutes';
+        const rebootLabel = schedule.auto_reboot ? ' + ♻️ Reboot' : '';
+        const statusClass = schedule.enabled ? '' : 'disabled';
+
+        return `
+            <div class="schedule-item ${statusClass}">
+                <div class="schedule-info">
+                    <h4>${scheduleDesc}</h4>
+                    <p>${updateTypeLabel}${rebootLabel} ${schedule.enabled ? '✓ Actif' : '✗ Inactif'}</p>
+                </div>
+                <div class="schedule-actions">
+                    <button class="btn btn-danger" onclick="deleteSchedule(${schedule.id})">Supprimer</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Get schedule description
+function getScheduleDescription(schedule) {
+    const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+    const time = `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`;
+
+    if (schedule.schedule_type === 'daily') {
+        return `Quotidien à ${time}`;
+    } else if (schedule.schedule_type === 'weekly') {
+        return `Chaque ${days[schedule.day_of_week]} à ${time}`;
+    } else if (schedule.schedule_type === 'monthly') {
+        return `Le ${schedule.day_of_month} de chaque mois à ${time}`;
+    }
+    return 'Planification inconnue';
+}
+
+// Save schedule
+async function saveSchedule(event) {
+    event.preventDefault();
+
+    const serverId = document.getElementById('schedule-server-id').value;
+    const scheduleType = document.getElementById('schedule-type').value;
+
+    const data = {
+        schedule_type: scheduleType,
+        hour: parseInt(document.getElementById('schedule-hour').value),
+        minute: parseInt(document.getElementById('schedule-minute').value),
+        update_type: document.getElementById('update-type').value,
+        auto_reboot: document.getElementById('auto-reboot').checked,
+        enabled: document.getElementById('schedule-enabled').checked
+    };
+
+    if (scheduleType === 'weekly') {
+        data.day_of_week = parseInt(document.getElementById('day-of-week').value);
+    } else if (scheduleType === 'monthly') {
+        data.day_of_month = parseInt(document.getElementById('day-of-month').value);
+    }
+
+    showLoading('Configuration de la planification...');
+
+    try {
+        const response = await fetch(`/api/servers/${serverId}/schedules`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        hideLoading();
+
+        if (response.ok) {
+            showMessage('Planification créée avec succès !');
+            await loadServerSchedules(serverId);
+            document.getElementById('schedule-form').reset();
+        } else {
+            showMessage('Erreur: ' + (result.error || 'Une erreur est survenue'), true);
+        }
+    } catch (error) {
+        hideLoading();
+        showMessage('Erreur: ' + error.message, true);
+    }
+}
+
+// Delete schedule
+async function deleteSchedule(scheduleId) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette planification ?')) {
+        return;
+    }
+
+    showLoading('Suppression de la planification...');
+
+    try {
+        const response = await fetch(`/api/schedules/${scheduleId}`, {
+            method: 'DELETE'
+        });
+
+        hideLoading();
+
+        if (response.ok) {
+            showMessage('Planification supprimée avec succès !');
+            if (currentServerId) {
+                await loadServerSchedules(currentServerId);
+            }
+        } else {
+            showMessage('Erreur lors de la suppression', true);
+        }
+    } catch (error) {
+        hideLoading();
+        showMessage('Erreur: ' + error.message, true);
+    }
+}
+
+// Setup schedule event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const scheduleForm = document.getElementById('schedule-form');
+    const scheduleType = document.getElementById('schedule-type');
+    const closeScheduleBtns = document.querySelectorAll('.close-schedule');
+    const scheduleModal = document.getElementById('schedule-modal');
+
+    scheduleForm.addEventListener('submit', saveSchedule);
+    scheduleType.addEventListener('change', updateScheduleTypeFields);
+
+    closeScheduleBtns.forEach(btn => {
+        btn.addEventListener('click', closeScheduleModal);
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target === scheduleModal) {
+            closeScheduleModal();
+        }
+    });
+});

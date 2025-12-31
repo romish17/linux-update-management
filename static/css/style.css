@@ -395,14 +395,21 @@ header p {
     overflow-y: auto;
 }
 
-.close {
+.modal-content.schedule-modal {
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.close, .close-schedule {
     float: right;
     font-size: 2rem;
     cursor: pointer;
     color: #666;
 }
 
-.close:hover {
+.close:hover, .close-schedule:hover {
     color: #333;
 }
 
@@ -429,6 +436,42 @@ header p {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Schedule List */
+.schedule-item {
+    background: #f3f4f6;
+    padding: 1rem;
+    border-radius: 5px;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.schedule-item.disabled {
+    opacity: 0.6;
+}
+
+.schedule-info h4 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.schedule-info p {
+    margin: 0;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.schedule-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.schedule-actions button {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.8rem;
 }
 
 /* Responsive */

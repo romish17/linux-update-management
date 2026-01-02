@@ -122,6 +122,8 @@ export default function Servers() {
       username: server.username,
       ssh_key_path: server.ssh_key_path || '/root/.ssh/id_rsa',
       os_type: server.os_type,
+      root_username: 'root',
+      root_password: '',
     })
     setDialogOpen(true)
   }

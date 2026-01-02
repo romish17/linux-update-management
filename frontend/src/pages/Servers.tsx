@@ -170,6 +170,8 @@ export default function Servers() {
           username: formData.username,
           ssh_key_path: formData.ssh_key_path,
           os_type: formData.os_type,
+          auto_check: true,
+          check_interval: 6,
         })
         setDialogOpen(false)
         loadServers()

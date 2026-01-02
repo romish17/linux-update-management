@@ -87,3 +87,38 @@ export interface AuthResponse {
   message: string;
   redirect?: string;
 }
+
+export interface ProvisioningStep {
+  name: string;
+  status: 'pending' | 'running' | 'success' | 'failed';
+  message?: string;
+  error?: string;
+}
+
+export interface ProvisionRequest {
+  name: string;
+  hostname: string;
+  port: number;
+  root_username: string;
+  root_password: string;
+  os_type: 'debian' | 'almalinux';
+}
+
+export interface ProvisionResponse {
+  success: boolean;
+  message: string;
+  server?: Server;
+  provisioning_steps?: ProvisioningStep[];
+  error?: string;
+  details?: string;
+}
+
+export interface SSHKeyInfo {
+  exists: boolean;
+  private_key_path?: string;
+  public_key_path?: string;
+  fingerprint?: string;
+  created?: number;
+  public_key?: string;
+  message?: string;
+}

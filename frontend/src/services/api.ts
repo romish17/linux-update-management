@@ -6,6 +6,9 @@ import type {
   Stats,
   LoginCredentials,
   AuthResponse,
+  ProvisionRequest,
+  ProvisionResponse,
+  SSHKeyInfo,
 } from '../types';
 
 const api = axios.create({
@@ -56,6 +59,17 @@ export const serversAPI = {
       security_only: securityOnly,
       auto_reboot: autoReboot,
     }),
+
+  provision: (data: ProvisionRequest) =>
+    api.post<ProvisionResponse>('/servers/provision', data),
+};
+
+export const sshKeyAPI = {
+  getInfo: () => api.get<SSHKeyInfo>('/ssh-key'),
+
+  regenerate: () => api.post<{ success: boolean; message: string }>('/ssh-key/regenerate'),
+
+  getPublicKey: () => api.get<{ public_key: string }>('/ssh-key/public'),
 };
 
 export const schedulesAPI = {

@@ -27,6 +27,13 @@ import {
   TableRow,
   Paper,
   Tooltip,
+  FormControlLabel,
+  Switch,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -38,9 +45,14 @@ import {
   ViewList as ListViewIcon,
   Sync as SyncIcon,
   Shield as ShieldIcon,
+  VpnKey as VpnKeyIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  HourglassEmpty as PendingIcon,
+  Loop as LoadingIcon,
 } from '@mui/icons-material'
 import { serversAPI } from '../services/api'
-import { Server } from '../types'
+import { Server, ProvisioningStep } from '../types'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -53,13 +65,18 @@ export default function Servers() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingServer, setEditingServer] = useState<Server | null>(null)
+  const [useProvisioning, setUseProvisioning] = useState(false)
+  const [isProvisioning, setIsProvisioning] = useState(false)
+  const [provisioningSteps, setProvisioningSteps] = useState<ProvisioningStep[]>([])
   const [formData, setFormData] = useState({
     name: '',
     hostname: '',
     port: 22,
     username: '',
-    ssh_key_path: '/root/.ssh/id_rsa',
+    ssh_key_path: '/app/data/ssh_keys/lum_rsa',
     os_type: 'debian' as 'debian' | 'almalinux',
+    root_username: 'root',
+    root_password: '',
   })
 
   useEffect(() => {
@@ -81,13 +98,17 @@ export default function Servers() {
 
   const handleAddServer = () => {
     setEditingServer(null)
+    setUseProvisioning(false)
+    setProvisioningSteps([])
     setFormData({
       name: '',
       hostname: '',
       port: 22,
       username: '',
-      ssh_key_path: '/root/.ssh/id_rsa',
+      ssh_key_path: '/app/data/ssh_keys/lum_rsa',
       os_type: 'debian',
+      root_username: 'root',
+      root_password: '',
     })
     setDialogOpen(true)
   }
@@ -108,14 +129,55 @@ export default function Servers() {
   const handleSaveServer = async () => {
     try {
       if (editingServer) {
+        // Editing existing server - no provisioning
         await serversAPI.update(editingServer.id, formData)
+        setDialogOpen(false)
+        loadServers()
+      } else if (useProvisioning) {
+        // Provisioning new server
+        setIsProvisioning(true)
+        setProvisioningSteps([])
+
+        const response = await serversAPI.provision({
+          name: formData.name,
+          hostname: formData.hostname,
+          port: formData.port,
+          root_username: formData.root_username,
+          root_password: formData.root_password,
+          os_type: formData.os_type,
+        })
+
+        if (response.data.success) {
+          setProvisioningSteps(response.data.provisioning_steps || [])
+          setTimeout(() => {
+            setDialogOpen(false)
+            setIsProvisioning(false)
+            loadServers()
+          }, 2000)
+        } else {
+          setProvisioningSteps(response.data.provisioning_steps || [])
+          setError(response.data.error || 'Provisioning failed')
+          setIsProvisioning(false)
+        }
       } else {
-        await serversAPI.create(formData)
+        // Manual server creation
+        await serversAPI.create({
+          name: formData.name,
+          hostname: formData.hostname,
+          port: formData.port,
+          username: formData.username,
+          ssh_key_path: formData.ssh_key_path,
+          os_type: formData.os_type,
+        })
+        setDialogOpen(false)
+        loadServers()
       }
-      setDialogOpen(false)
-      loadServers()
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erreur lors de la sauvegarde')
+      setIsProvisioning(false)
+      if (err.response?.data?.steps) {
+        setProvisioningSteps(err.response.data.steps)
+      }
     }
   }
 
@@ -400,25 +462,47 @@ export default function Servers() {
         </TableContainer>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => !isProvisioning && setDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
           {editingServer ? 'Modifier le serveur' : 'Ajouter un serveur'}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            {/* Provisioning Toggle - Only for new servers */}
+            {!editingServer && (
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={useProvisioning}
+                    onChange={(e) => setUseProvisioning(e.target.checked)}
+                    disabled={isProvisioning}
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <VpnKeyIcon />
+                    <Typography>Provisioning automatique (créer l'utilisateur et déployer la clé SSH)</Typography>
+                  </Box>
+                }
+              />
+            )}
+
+            {/* Common Fields */}
             <TextField
               label="Nom"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
               fullWidth
+              disabled={isProvisioning}
             />
             <TextField
-              label="Hostname"
+              label="Hostname / IP"
               value={formData.hostname}
               onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
               required
               fullWidth
+              disabled={isProvisioning}
             />
             <TextField
               label="Port SSH"
@@ -427,19 +511,7 @@ export default function Servers() {
               onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) })}
               required
               fullWidth
-            />
-            <TextField
-              label="Utilisateur SSH"
-              value={formData.username}
-              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Chemin clé SSH"
-              value={formData.ssh_key_path}
-              onChange={(e) => setFormData({ ...formData, ssh_key_path: e.target.value })}
-              fullWidth
+              disabled={isProvisioning}
             />
             <TextField
               select
@@ -448,16 +520,101 @@ export default function Servers() {
               onChange={(e) => setFormData({ ...formData, os_type: e.target.value as 'debian' | 'almalinux' })}
               required
               fullWidth
+              disabled={isProvisioning}
             >
-              <MenuItem value="debian">Debian</MenuItem>
-              <MenuItem value="almalinux">AlmaLinux</MenuItem>
+              <MenuItem value="debian">Debian / Ubuntu</MenuItem>
+              <MenuItem value="almalinux">AlmaLinux / RHEL / CentOS</MenuItem>
             </TextField>
+
+            {/* Provisioning Fields */}
+            {useProvisioning && !editingServer ? (
+              <>
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  Le provisioning va créer automatiquement l'utilisateur <strong>lum-user</strong> sur le serveur distant
+                  et déployer la clé SSH de l'application.
+                </Alert>
+                <TextField
+                  label="Utilisateur root / sudo"
+                  value={formData.root_username}
+                  onChange={(e) => setFormData({ ...formData, root_username: e.target.value })}
+                  required
+                  fullWidth
+                  disabled={isProvisioning}
+                  helperText="Utilisateur avec privilèges root (généralement 'root')"
+                />
+                <TextField
+                  label="Mot de passe root"
+                  type="password"
+                  value={formData.root_password}
+                  onChange={(e) => setFormData({ ...formData, root_password: e.target.value })}
+                  required
+                  fullWidth
+                  disabled={isProvisioning}
+                  helperText="Mot de passe temporaire (ne sera pas stocké)"
+                />
+              </>
+            ) : (
+              <>
+                {/* Manual Configuration Fields */}
+                <TextField
+                  label="Utilisateur SSH"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  required
+                  fullWidth
+                  disabled={isProvisioning}
+                  helperText="Utilisateur SSH déjà configuré sur le serveur"
+                />
+                <TextField
+                  label="Chemin clé SSH"
+                  value={formData.ssh_key_path}
+                  onChange={(e) => setFormData({ ...formData, ssh_key_path: e.target.value })}
+                  fullWidth
+                  disabled={isProvisioning}
+                  helperText="Chemin vers la clé SSH privée"
+                />
+              </>
+            )}
+
+            {/* Provisioning Progress */}
+            {isProvisioning && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Provisioning en cours...
+                </Typography>
+                <LinearProgress sx={{ mb: 2 }} />
+                <List dense>
+                  {provisioningSteps.map((step, index) => (
+                    <ListItem key={index}>
+                      <ListItemIcon>
+                        {step.status === 'success' && <CheckCircleIcon color="success" />}
+                        {step.status === 'failed' && <ErrorIcon color="error" />}
+                        {step.status === 'running' && <LoadingIcon color="primary" className="rotating" />}
+                        {step.status === 'pending' && <PendingIcon color="disabled" />}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={step.message || step.name}
+                        secondary={step.error}
+                        secondaryTypographyProps={{ color: 'error' }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Annuler</Button>
-          <Button onClick={handleSaveServer} variant="contained">
-            {editingServer ? 'Modifier' : 'Ajouter'}
+          <Button onClick={() => setDialogOpen(false)} disabled={isProvisioning}>
+            Annuler
+          </Button>
+          <Button
+            onClick={handleSaveServer}
+            variant="contained"
+            disabled={isProvisioning}
+            startIcon={useProvisioning && !editingServer ? <VpnKeyIcon /> : null}
+          >
+            {isProvisioning ? 'Provisioning...' : editingServer ? 'Modifier' : useProvisioning ? 'Provisionner' : 'Ajouter'}
           </Button>
         </DialogActions>
       </Dialog>

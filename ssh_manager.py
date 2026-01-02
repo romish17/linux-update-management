@@ -114,6 +114,7 @@ class DebianUpdateManager:
 
             # Parse package details
             packages = []
+            security_packages = []
             for line in lines:
                 # Format: package/version arch version [arch]
                 match = re.match(r'(\S+)/\S+\s+(\S+)\s+\S+\s+\[upgradable from:\s+(\S+)\]', line)
@@ -125,12 +126,24 @@ class DebianUpdateManager:
                     # Check if it's a security update
                     is_security = '-security' in line or 'security' in line.lower()
 
-                    packages.append({
+                    package_info = {
                         'name': pkg_name,
                         'old_version': old_version,
                         'new_version': new_version,
                         'is_security': is_security
-                    })
+                    }
+
+                    packages.append(package_info)
+                    if is_security:
+                        security_packages.append(pkg_name)
+
+            # Get CVE information for security updates
+            cve_info = []
+            critical_cves = []
+            if security_packages:
+                cve_result = DebianUpdateManager.get_cve_info(ssh_manager, security_packages)
+                cve_info = cve_result.get('cves', [])
+                critical_cves = cve_result.get('critical', [])
 
             # Filter security updates if requested
             if security_only:
@@ -141,6 +154,11 @@ class DebianUpdateManager:
                 output_msg = "System is up to date - no updates available"
             else:
                 output_msg = f"Found {len(packages)} updates available"
+                if len(security_packages) > 0:
+                    output_msg += f"\n⚠️  {len(security_packages)} security updates"
+                if len(critical_cves) > 0:
+                    output_msg += f"\n🔴 {len(critical_cves)} CRITICAL vulnerabilities"
+                    output_msg += f"\n   CVEs: {', '.join(critical_cves)}"
                 if len(lines) > 0:
                     output_msg += f"\n\nUpgradable packages:\n{result['output']}"
 
@@ -148,14 +166,78 @@ class DebianUpdateManager:
                 'success': True,
                 'count': len(packages),
                 'packages': packages,
-                'output': output_msg
+                'output': output_msg,
+                'security_count': len(security_packages),
+                'cve_info': cve_info,
+                'critical_cves': critical_cves
             }
         except Exception as e:
             return {
                 'success': False,
                 'count': 0,
                 'packages': [],
-                'output': f"Exception in check_updates: {str(e)}"
+                'output': f"Exception in check_updates: {str(e)}",
+                'security_count': 0,
+                'cve_info': [],
+                'critical_cves': []
+            }
+
+    @staticmethod
+    def get_cve_info(ssh_manager, packages):
+        """Get CVE information for security packages"""
+        try:
+            cves = []
+            critical = []
+
+            # Try to get CVE info from apt changelog (limit to first 10 to avoid slowdown)
+            for package in packages[:10]:
+                # Get package changelog which often contains CVE references
+                changelog_cmd = f"apt-cache show {package} 2>/dev/null | grep -i 'cve-' || true"
+                result = ssh_manager.execute_command(changelog_cmd)
+
+                if result['output']:
+                    # Extract CVE IDs
+                    cve_matches = re.findall(r'CVE-\d{4}-\d+', result['output'], re.IGNORECASE)
+                    for cve in cve_matches:
+                        cve_upper = cve.upper()
+                        if cve_upper not in [c['id'] for c in cves]:
+                            # Determine severity based on package type
+                            severity = 'medium'
+                            pkg_name = package.lower()
+
+                            # Critical packages that should be prioritized
+                            critical_packages = [
+                                'linux-image', 'linux-headers', 'kernel',
+                                'openssl', 'libssl',
+                                'openssh', 'ssh',
+                                'sudo',
+                                'systemd',
+                                'glibc', 'libc6',
+                                'bind9', 'apache2', 'nginx'
+                            ]
+
+                            if any(crit_pkg in pkg_name for crit_pkg in critical_packages):
+                                severity = 'critical'
+                                critical.append(cve_upper)
+                            elif 'security' in pkg_name:
+                                severity = 'high'
+
+                            cve_entry = {
+                                'id': cve_upper,
+                                'package': package,
+                                'severity': severity
+                            }
+                            cves.append(cve_entry)
+
+            return {
+                'cves': cves,
+                'critical': critical
+            }
+
+        except Exception as e:
+            return {
+                'cves': [],
+                'critical': []
             }
 
     @staticmethod

@@ -178,6 +178,19 @@ class ServerProvisioner:
             sudoers_config = self.get_sudoers_config(os_type)
             sudoers_file = f"/etc/sudoers.d/{LUM_USER}"
 
+            # Ensure sudoers.d directory exists
+            mkdir_result = ssh.execute_command("mkdir -p /etc/sudoers.d")
+            if mkdir_result['exit_status'] != 0:
+                raise Exception(f"Failed to create sudoers.d directory: {mkdir_result['error']}")
+
+            # Ensure /etc/sudoers includes sudoers.d directory
+            check_include = ssh.execute_command("grep -q '#includedir /etc/sudoers.d' /etc/sudoers || grep -q '@includedir /etc/sudoers.d' /etc/sudoers")
+            if check_include['exit_status'] != 0:
+                # Add includedir directive to /etc/sudoers
+                add_include = ssh.execute_command("echo '@includedir /etc/sudoers.d' >> /etc/sudoers")
+                if add_include['exit_status'] != 0:
+                    logger.warning(f"Could not add includedir to /etc/sudoers: {add_include['error']}")
+
             sudoers_commands = [
                 f"echo '{sudoers_config}' > {sudoers_file}",
                 f"chmod 440 {sudoers_file}",

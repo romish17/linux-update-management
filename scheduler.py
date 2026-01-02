@@ -73,6 +73,7 @@ class UpdateScheduler:
     def _check_server_updates(self, server):
         """Check updates for a specific server"""
         from models import UpdateHistory
+        from ssh_manager import SSHManager, get_update_manager
         import json
 
         start_time = time.time()

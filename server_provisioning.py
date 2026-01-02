@@ -136,15 +136,16 @@ class ServerProvisioner:
 
             # Check if user already exists
             check_user = f"id {LUM_USER} >/dev/null 2>&1 && echo 'exists' || echo 'not_exists'"
-            user_exists = ssh.execute_command(check_user)[1].strip()
+            check_result = ssh.execute_command(check_user)
+            user_exists = check_result['output'].strip()
 
             if user_exists == 'not_exists':
                 # Create user with home directory
                 create_cmd = f"useradd -m -s /bin/bash {LUM_USER}"
-                exit_code, stdout, stderr = ssh.execute_command(create_cmd)
+                create_result = ssh.execute_command(create_cmd)
 
-                if exit_code != 0:
-                    raise Exception(f"Failed to create user: {stderr}")
+                if create_result['exit_status'] != 0:
+                    raise Exception(f"Failed to create user: {create_result['error']}")
 
                 result['steps'][-1]['message'] = f'User {LUM_USER} created'
             else:
@@ -164,9 +165,9 @@ class ServerProvisioner:
             ]
 
             for cmd in ssh_setup_commands:
-                exit_code, stdout, stderr = ssh.execute_command(cmd)
-                if exit_code != 0:
-                    raise Exception(f"SSH setup failed: {stderr}")
+                cmd_result = ssh.execute_command(cmd)
+                if cmd_result['exit_status'] != 0:
+                    raise Exception(f"SSH setup failed: {cmd_result['error']}")
 
             result['steps'][-1]['status'] = 'success'
             result['steps'][-1]['message'] = 'SSH key deployed'
@@ -184,9 +185,9 @@ class ServerProvisioner:
             ]
 
             for cmd in sudoers_commands:
-                exit_code, stdout, stderr = ssh.execute_command(cmd)
-                if exit_code != 0:
-                    raise Exception(f"Sudoers configuration failed: {stderr}")
+                cmd_result = ssh.execute_command(cmd)
+                if cmd_result['exit_status'] != 0:
+                    raise Exception(f"Sudoers configuration failed: {cmd_result['error']}")
 
             result['steps'][-1]['status'] = 'success'
             result['steps'][-1]['message'] = 'Sudo permissions configured'
@@ -214,9 +215,9 @@ class ServerProvisioner:
             else:
                 test_cmd = 'sudo yum --version'
 
-            exit_code, stdout, stderr = test_ssh.execute_command(test_cmd)
-            if exit_code != 0:
-                raise Exception(f"Sudo test failed: {stderr}")
+            test_result = test_ssh.execute_command(test_cmd)
+            if test_result['exit_status'] != 0:
+                raise Exception(f"Sudo test failed: {test_result['error']}")
 
             test_ssh.disconnect()
 

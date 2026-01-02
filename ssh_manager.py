@@ -84,13 +84,30 @@ class DebianUpdateManager:
     @staticmethod
     def check_updates(ssh_manager, security_only=False):
         """Check for available updates"""
-        # Update package lists
-        ssh_manager.execute_command('sudo apt-get update')
+        try:
+            # Update package lists
+            update_result = ssh_manager.execute_command('sudo apt-get update')
+            if not update_result['success']:
+                error_msg = f"Failed to update package lists: {update_result['error']}\nOutput: {update_result['output']}"
+                return {
+                    'success': False,
+                    'count': 0,
+                    'packages': [],
+                    'output': error_msg
+                }
 
-        # Check for upgradable packages
-        result = ssh_manager.execute_command('apt list --upgradable 2>/dev/null | grep -v "Listing"')
+            # Check for upgradable packages
+            result = ssh_manager.execute_command('apt list --upgradable 2>/dev/null | grep -v "Listing"')
 
-        if result['success']:
+            if not result['success']:
+                error_msg = f"Failed to list upgradable packages: {result['error']}\nOutput: {result['output']}"
+                return {
+                    'success': False,
+                    'count': 0,
+                    'packages': [],
+                    'output': error_msg
+                }
+
             lines = [line for line in result['output'].split('\n') if line.strip()]
 
             # Parse package details
@@ -117,18 +134,23 @@ class DebianUpdateManager:
             if security_only:
                 packages = [p for p in packages if p['is_security']]
 
+            output_msg = f"Found {len(packages)} updates available"
+            if len(lines) > 0:
+                output_msg += f"\n\nUpgradable packages:\n{result['output']}"
+
             return {
                 'success': True,
                 'count': len(packages),
                 'packages': packages,
-                'output': result['output']
+                'output': output_msg
             }
-        return {
-            'success': False,
-            'count': 0,
-            'packages': [],
-            'output': result['error']
-        }
+        except Exception as e:
+            return {
+                'success': False,
+                'count': 0,
+                'packages': [],
+                'output': f"Exception in check_updates: {str(e)}"
+            }
 
     @staticmethod
     def apply_updates(ssh_manager, security_only=False):
@@ -193,54 +215,74 @@ class AlmaLinuxUpdateManager:
     @staticmethod
     def check_updates(ssh_manager, security_only=False):
         """Check for available updates"""
-        # Try dnf first, fall back to yum
-        result = ssh_manager.execute_command('which dnf')
-        pkg_manager = 'dnf' if result['success'] else 'yum'
+        try:
+            # Try dnf first, fall back to yum
+            result = ssh_manager.execute_command('which dnf')
+            pkg_manager = 'dnf' if result['success'] else 'yum'
 
-        if security_only:
-            # Check for security updates only
-            result = ssh_manager.execute_command(f'{pkg_manager} updateinfo list security --available')
-        else:
-            result = ssh_manager.execute_command(f'{pkg_manager} check-update -q')
+            if security_only:
+                # Check for security updates only
+                result = ssh_manager.execute_command(f'{pkg_manager} updateinfo list security --available')
+            else:
+                result = ssh_manager.execute_command(f'{pkg_manager} check-update -q')
 
-        # check-update returns exit code 100 if updates are available
-        if result['exit_status'] in [0, 100] or result['success']:
-            lines = [line for line in result['output'].split('\n') if line.strip()]
+            # check-update returns exit code 100 if updates are available
+            if result['exit_status'] in [0, 100] or result['success']:
+                lines = [line for line in result['output'].split('\n') if line.strip()]
 
-            # Parse package details
-            packages = []
-            for line in lines:
-                if not line.strip() or line.startswith('Last metadata') or line.startswith('Security:'):
-                    continue
+                # Parse package details
+                packages = []
+                for line in lines:
+                    if not line.strip() or line.startswith('Last metadata') or line.startswith('Security:'):
+                        continue
 
-                # Format: package.arch version repo
-                parts = line.split()
-                if len(parts) >= 3 and '.' in parts[0]:
-                    pkg_name = parts[0]
-                    new_version = parts[1]
-                    repo = parts[2] if len(parts) > 2 else 'unknown'
+                    # Format: package.arch version repo
+                    parts = line.split()
+                    if len(parts) >= 3 and '.' in parts[0]:
+                        pkg_name = parts[0]
+                        new_version = parts[1]
+                        repo = parts[2] if len(parts) > 2 else 'unknown'
 
-                    is_security = 'security' in repo.lower() or security_only
+                        is_security = 'security' in repo.lower() or security_only
 
-                    packages.append({
-                        'name': pkg_name,
-                        'new_version': new_version,
-                        'repo': repo,
-                        'is_security': is_security
-                    })
+                        packages.append({
+                            'name': pkg_name,
+                            'new_version': new_version,
+                            'repo': repo,
+                            'is_security': is_security
+                        })
+
+                output_msg = f"Found {len(packages)} updates available using {pkg_manager}"
+                if len(lines) > 0:
+                    output_msg += f"\n\nAvailable updates:\n{result['output']}"
+
+                return {
+                    'success': True,
+                    'count': len(packages),
+                    'packages': packages,
+                    'output': output_msg
+                }
+
+            error_msg = f"Failed to check updates using {pkg_manager}"
+            if result['error']:
+                error_msg += f"\nError: {result['error']}"
+            if result['output']:
+                error_msg += f"\nOutput: {result['output']}"
+            error_msg += f"\nExit status: {result['exit_status']}"
 
             return {
-                'success': True,
-                'count': len(packages),
-                'packages': packages,
-                'output': result['output']
+                'success': False,
+                'count': 0,
+                'packages': [],
+                'output': error_msg
             }
-        return {
-            'success': False,
-            'count': 0,
-            'packages': [],
-            'output': result['error']
-        }
+        except Exception as e:
+            return {
+                'success': False,
+                'count': 0,
+                'packages': [],
+                'output': f"Exception in check_updates: {str(e)}"
+            }
 
     @staticmethod
     def apply_updates(ssh_manager, security_only=False):

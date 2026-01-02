@@ -335,17 +335,20 @@ def check_updates(server_id):
         })
 
     except Exception as e:
-        logger.error(f"Error checking updates for server {server_id}: {str(e)}", exc_info=True)
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Error checking updates for server {server_id}: {str(e)}\n{error_trace}")
         server.status = 'error'
 
-        # Log error in history
+        # Log error in history with full details
+        error_output = f"Error: {str(e)}\n\nDetails:\n{error_trace}"
         history = UpdateHistory(
             server_id=server.id,
             server_hostname=server.hostname,
             action='check',
             success=False,
             duration=time.time() - start_time if 'start_time' in locals() else 0,
-            output=f"Error: {str(e)}"
+            output=error_output
         )
         db.session.add(history)
         db.session.commit()

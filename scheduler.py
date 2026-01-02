@@ -122,17 +122,20 @@ class UpdateScheduler:
             logger.info(f"Server {server.name}: {result['count']} updates available")
 
         except Exception as e:
-            logger.error(f"Error checking server {server.name}: {str(e)}")
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.error(f"Error checking server {server.name}: {str(e)}\n{error_trace}")
             server.status = 'error'
 
-            # Log error to history
+            # Log error to history with full details
+            error_output = f"Error: {str(e)}\n\nDetails:\n{error_trace}"
             history = UpdateHistory(
                 server_id=server.id,
                 server_hostname=server.hostname,
                 action='auto_check',
                 success=False,
                 duration=time.time() - start_time,
-                output=f"Error: {str(e)}"
+                output=error_output
             )
             self.db.session.add(history)
 

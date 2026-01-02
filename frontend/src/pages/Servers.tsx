@@ -68,6 +68,15 @@ export default function Servers() {
   const [useProvisioning, setUseProvisioning] = useState(false)
   const [isProvisioning, setIsProvisioning] = useState(false)
   const [provisioningSteps, setProvisioningSteps] = useState<ProvisioningStep[]>([])
+
+  // Update progress modal states
+  const [updateProgressOpen, setUpdateProgressOpen] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<'running' | 'success' | 'error'>('running')
+  const [updateMessage, setUpdateMessage] = useState('')
+  const [updateOutput, setUpdateOutput] = useState('')
+  const [updatingServerName, setUpdatingServerName] = useState('')
+
   const [formData, setFormData] = useState({
     name: '',
     hostname: '',
@@ -206,10 +215,36 @@ export default function Servers() {
 
   const handleApplyUpdates = async (id: number, securityOnly: boolean = false, autoReboot: boolean = false) => {
     if (!confirm('Êtes-vous sûr de vouloir appliquer les mises à jour ?')) return
+
+    const server = servers.find(s => s.id === id)
+    if (!server) return
+
+    // Open progress modal
+    setUpdatingServerName(server.name)
+    setUpdateStatus('running')
+    setUpdateMessage('Connexion au serveur...')
+    setUpdateOutput('')
+    setUpdateProgressOpen(true)
+    setIsUpdating(true)
+
     try {
-      await serversAPI.applyUpdates(id, securityOnly, autoReboot)
-      loadServers()
+      setUpdateMessage('Application des mises à jour en cours...')
+      const response = await serversAPI.applyUpdates(id, securityOnly, autoReboot)
+
+      setUpdateStatus('success')
+      setUpdateMessage('Mises à jour appliquées avec succès !')
+      setUpdateOutput(response.data.output || '')
+      setIsUpdating(false)
+
+      // Reload servers after 2 seconds
+      setTimeout(() => {
+        loadServers()
+      }, 2000)
     } catch (err: any) {
+      setUpdateStatus('error')
+      setUpdateMessage('Erreur lors de l\'application des mises à jour')
+      setUpdateOutput(err.response?.data?.message || err.message || 'Erreur inconnue')
+      setIsUpdating(false)
       setError(err.response?.data?.error || 'Erreur lors de la mise à jour')
     }
   }
@@ -619,6 +654,65 @@ export default function Servers() {
             startIcon={useProvisioning && !editingServer ? <VpnKeyIcon /> : null}
           >
             {isProvisioning ? 'Provisioning...' : editingServer ? 'Modifier' : useProvisioning ? 'Provisionner' : 'Ajouter'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Update Progress Modal */}
+      <Dialog
+        open={updateProgressOpen}
+        onClose={() => !isUpdating && setUpdateProgressOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Mise à jour de {updatingServerName}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mt: 2 }}>
+            {/* Status Icon and Message */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {updateStatus === 'running' && <CircularProgress size={40} />}
+              {updateStatus === 'success' && <CheckCircleIcon color="success" sx={{ fontSize: 40 }} />}
+              {updateStatus === 'error' && <ErrorIcon color="error" sx={{ fontSize: 40 }} />}
+              <Typography variant="h6">
+                {updateMessage}
+              </Typography>
+            </Box>
+
+            {/* Progress Bar */}
+            {isUpdating && (
+              <LinearProgress />
+            )}
+
+            {/* Output */}
+            {updateOutput && (
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  bgcolor: '#1e1e1e',
+                  color: '#d4d4d4',
+                  fontFamily: 'monospace',
+                  fontSize: '0.875rem',
+                  maxHeight: 400,
+                  overflow: 'auto',
+                }}
+              >
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {updateOutput}
+                </pre>
+              </Paper>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setUpdateProgressOpen(false)}
+            disabled={isUpdating}
+            variant="contained"
+          >
+            {isUpdating ? 'Mise à jour en cours...' : 'Fermer'}
           </Button>
         </DialogActions>
       </Dialog>

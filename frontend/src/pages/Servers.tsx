@@ -181,6 +181,8 @@ export default function Servers() {
           os_type: formData.os_type,
           auto_check: true,
           check_interval: 6,
+          security_updates_count: 0,
+          critical_cves_count: 0,
         })
         setDialogOpen(false)
         loadServers()

@@ -172,7 +172,31 @@ class ServerProvisioner:
             result['steps'][-1]['status'] = 'success'
             result['steps'][-1]['message'] = 'SSH key deployed'
 
-            # Step 5: Configure sudoers
+            # Step 5: Ensure sudo is installed
+            result['steps'].append({'name': 'install_sudo', 'status': 'running'})
+
+            # Check if sudo is installed
+            check_sudo = ssh.execute_command('which sudo')
+            if check_sudo['exit_status'] != 0:
+                logger.info(f"sudo not found on {hostname}, installing...")
+
+                # Install sudo based on OS type
+                if os_type == 'debian':
+                    install_cmd = 'apt-get update && apt-get install -y sudo'
+                else:  # almalinux/rhel
+                    install_cmd = 'yum install -y sudo || dnf install -y sudo'
+
+                install_result = ssh.execute_command(install_cmd)
+                if install_result['exit_status'] != 0:
+                    raise Exception(f"Failed to install sudo: {install_result['error']}")
+
+                result['steps'][-1]['message'] = 'sudo installed'
+            else:
+                result['steps'][-1]['message'] = 'sudo already installed'
+
+            result['steps'][-1]['status'] = 'success'
+
+            # Step 6: Configure sudoers
             result['steps'].append({'name': 'configure_sudoers', 'status': 'running'})
 
             sudoers_config = self.get_sudoers_config(os_type)
@@ -208,7 +232,7 @@ class ServerProvisioner:
             # Disconnect root session
             ssh.disconnect()
 
-            # Step 6: Test connection with new user
+            # Step 7: Test connection with new user
             result['steps'].append({'name': 'test_connection', 'status': 'running'})
 
             test_ssh = SSHManager(

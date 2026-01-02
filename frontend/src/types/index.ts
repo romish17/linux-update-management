@@ -8,6 +8,8 @@ export interface Server {
   os_type: 'debian' | 'almalinux';
   last_check?: string;
   updates_available: number;
+  security_updates_count: number;
+  critical_cves_count: number;
   status: 'online' | 'offline' | 'updating' | 'unknown';
   auto_check: boolean;
   check_interval: number;
@@ -34,6 +36,9 @@ export interface UpdateHistory {
   update_type: 'all' | 'security';
   packages_count: number;
   package_list: Package[];
+  security_count: number;
+  cve_list: CVEInfo[];
+  critical_cves: string[];
   output: string;
   success: boolean;
   duration?: number;
@@ -46,6 +51,12 @@ export interface Package {
   old_version?: string;
   new_version?: string;
   is_security?: boolean;
+}
+
+export interface CVEInfo {
+  id: string;
+  package: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
 }
 
 export interface Schedule {
@@ -76,6 +87,9 @@ export interface Stats {
   total_schedules: number;
   enabled_schedules: number;
   updates_last_24h: number;
+  servers_with_critical_cves: number;
+  total_critical_cves: number;
+  critical_servers: Server[];
   recent_activity: UpdateHistory[];
 }
 

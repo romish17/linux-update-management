@@ -320,6 +320,7 @@ class AlmaLinuxUpdateManager:
 
                 # Parse package details
                 packages = []
+                security_packages = []
                 for line in lines:
                     if not line.strip() or line.startswith('Last metadata') or line.startswith('Security:'):
                         continue
@@ -340,11 +341,27 @@ class AlmaLinuxUpdateManager:
                             'is_security': is_security
                         })
 
+                        if is_security:
+                            security_packages.append(pkg_name)
+
+                # Get CVE information for security updates
+                cve_info = []
+                critical_cves = []
+                if security_packages:
+                    cve_result = AlmaLinuxUpdateManager.get_cve_info(ssh_manager, security_packages, pkg_manager)
+                    cve_info = cve_result.get('cves', [])
+                    critical_cves = cve_result.get('critical', [])
+
                 # Generate appropriate message
                 if len(packages) == 0:
                     output_msg = "System is up to date - no updates available"
                 else:
                     output_msg = f"Found {len(packages)} updates available using {pkg_manager}"
+                    if len(security_packages) > 0:
+                        output_msg += f"\n⚠️  {len(security_packages)} security updates"
+                    if len(critical_cves) > 0:
+                        output_msg += f"\n🔴 {len(critical_cves)} CRITICAL vulnerabilities"
+                        output_msg += f"\n   CVEs: {', '.join(critical_cves)}"
                     if len(lines) > 0:
                         output_msg += f"\n\nAvailable updates:\n{result['output']}"
 
@@ -352,7 +369,10 @@ class AlmaLinuxUpdateManager:
                     'success': True,
                     'count': len(packages),
                     'packages': packages,
-                    'output': output_msg
+                    'output': output_msg,
+                    'security_count': len(security_packages),
+                    'cve_info': cve_info,
+                    'critical_cves': critical_cves
                 }
 
             error_msg = f"Failed to check updates using {pkg_manager}"
@@ -366,14 +386,89 @@ class AlmaLinuxUpdateManager:
                 'success': False,
                 'count': 0,
                 'packages': [],
-                'output': error_msg
+                'output': error_msg,
+                'security_count': 0,
+                'cve_info': [],
+                'critical_cves': []
             }
         except Exception as e:
             return {
                 'success': False,
                 'count': 0,
                 'packages': [],
-                'output': f"Exception in check_updates: {str(e)}"
+                'output': f"Exception in check_updates: {str(e)}",
+                'security_count': 0,
+                'cve_info': [],
+                'critical_cves': []
+            }
+
+    @staticmethod
+    def get_cve_info(ssh_manager, packages, pkg_manager):
+        """Get CVE information for security packages using dnf/yum updateinfo"""
+        try:
+            cves = []
+            critical = []
+
+            # Get CVE info using updateinfo (limit to first 10 to avoid slowdown)
+            for package in packages[:10]:
+                # Get detailed security info for the package
+                info_cmd = f"{pkg_manager} updateinfo info {package} 2>/dev/null || true"
+                result = ssh_manager.execute_command(info_cmd)
+
+                if result['output']:
+                    # Extract CVE IDs from updateinfo output
+                    cve_matches = re.findall(r'CVE-\d{4}-\d+', result['output'], re.IGNORECASE)
+
+                    for cve in cve_matches:
+                        cve_upper = cve.upper()
+                        if cve_upper not in [c['id'] for c in cves]:
+                            # Determine severity based on package type
+                            severity = 'medium'
+                            pkg_name = package.lower()
+
+                            # Check severity from updateinfo output
+                            if 'Severity : Critical' in result['output'] or 'Type : Security' in result['output']:
+                                severity_match = re.search(r'Severity\s*:\s*(\w+)', result['output'], re.IGNORECASE)
+                                if severity_match:
+                                    sev_level = severity_match.group(1).lower()
+                                    if sev_level in ['critical', 'important']:
+                                        severity = 'critical'
+                                    elif sev_level in ['high', 'moderate']:
+                                        severity = 'high'
+
+                            # Critical packages that should be prioritized
+                            critical_packages = [
+                                'kernel', 'linux',
+                                'openssl',
+                                'openssh', 'ssh',
+                                'sudo',
+                                'systemd',
+                                'glibc',
+                                'bind', 'httpd', 'nginx'
+                            ]
+
+                            if any(crit_pkg in pkg_name for crit_pkg in critical_packages):
+                                severity = 'critical'
+
+                            if severity == 'critical':
+                                critical.append(cve_upper)
+
+                            cve_entry = {
+                                'id': cve_upper,
+                                'package': package,
+                                'severity': severity
+                            }
+                            cves.append(cve_entry)
+
+            return {
+                'cves': cves,
+                'critical': critical
+            }
+
+        except Exception as e:
+            return {
+                'cves': [],
+                'critical': []
             }
 
     @staticmethod

@@ -23,6 +23,8 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   CloudDone as CloudDoneIcon,
+  Warning as WarningIcon,
+  Security as SecurityIcon,
 } from '@mui/icons-material'
 import { statsAPI } from '../services/api'
 import { Stats } from '../types'
@@ -114,6 +116,39 @@ export default function Dashboard() {
       <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
         Vue d'ensemble de vos serveurs Linux
       </Typography>
+
+      {/* CVE Critical Alerts */}
+      {stats.servers_with_critical_cves > 0 && (
+        <Alert
+          severity="error"
+          icon={<SecurityIcon />}
+          sx={{ mb: 3 }}
+          action={
+            <Chip
+              label={`${stats.total_critical_cves} CVE`}
+              color="error"
+              size="small"
+            />
+          }
+        >
+          <Typography variant="subtitle1" fontWeight="bold">
+            🔴 {stats.servers_with_critical_cves} serveur(s) avec des vulnérabilités CRITIQUES
+          </Typography>
+          <Box sx={{ mt: 1 }}>
+            {stats.critical_servers.map((server) => (
+              <Chip
+                key={server.id}
+                label={`${server.name}: ${server.critical_cves_count} CVE`}
+                color="error"
+                variant="outlined"
+                size="small"
+                icon={<WarningIcon />}
+                sx={{ mr: 1, mb: 1 }}
+              />
+            ))}
+          </Box>
+        </Alert>
+      )}
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {statCards.map((card) => (

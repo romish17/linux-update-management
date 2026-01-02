@@ -502,6 +502,13 @@ def get_stats():
     # Security updates count
     security_updates_pending = db.session.query(Server).filter(Server.updates_available > 0).all()
 
+    # CVE statistics
+    servers_with_critical_cves = Server.query.filter(Server.critical_cves_count > 0).count()
+    total_critical_cves = db.session.query(db.func.sum(Server.critical_cves_count)).scalar() or 0
+
+    # Get servers with critical CVEs for alerts
+    critical_servers = Server.query.filter(Server.critical_cves_count > 0).order_by(Server.critical_cves_count.desc()).limit(5).all()
+
     recent_history = UpdateHistory.query.order_by(UpdateHistory.created_at.desc()).limit(10).all()
 
     return jsonify({
@@ -516,6 +523,9 @@ def get_stats():
         'total_schedules': total_schedules,
         'enabled_schedules': enabled_schedules,
         'updates_last_24h': updates_last_24h,
+        'servers_with_critical_cves': servers_with_critical_cves,
+        'total_critical_cves': total_critical_cves,
+        'critical_servers': [s.to_dict() for s in critical_servers],
         'recent_activity': [h.to_dict() for h in recent_history]
     })
 

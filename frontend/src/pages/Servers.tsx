@@ -52,8 +52,8 @@ import {
   Loop as LoadingIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material'
-import { serversAPI } from '../services/api'
-import { Server, ProvisioningStep } from '../types'
+import { serversAPI, historyAPI } from '../services/api'
+import { Server, ProvisioningStep, CVEInfo } from '../types'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -77,6 +77,12 @@ export default function Servers() {
   const [updateMessage, setUpdateMessage] = useState('')
   const [updateOutput, setUpdateOutput] = useState('')
   const [updatingServerName, setUpdatingServerName] = useState('')
+
+  // CVE dialog states
+  const [cveDialogOpen, setCveDialogOpen] = useState(false)
+  const [selectedServerCves, setSelectedServerCves] = useState<CVEInfo[]>([])
+  const [selectedServerName, setSelectedServerName] = useState('')
+  const [loadingCves, setLoadingCves] = useState(false)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -207,6 +213,32 @@ export default function Servers() {
     }
   }
 
+  const handleShowCves = async (server: Server) => {
+    try {
+      setLoadingCves(true)
+      setSelectedServerName(server.name)
+      setCveDialogOpen(true)
+
+      // Fetch update history for this server
+      const response = await historyAPI.getAll(server.id)
+      const history = response.data
+
+      // Find the most recent check with CVE data
+      const recentCheck = history.find(h => h.cve_list && h.cve_list.length > 0)
+
+      if (recentCheck && recentCheck.cve_list) {
+        setSelectedServerCves(recentCheck.cve_list)
+      } else {
+        setSelectedServerCves([])
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Erreur lors du chargement des CVE')
+      setSelectedServerCves([])
+    } finally {
+      setLoadingCves(false)
+    }
+  }
+
   const handleCheckUpdates = async (id: number, securityOnly: boolean = false) => {
     try {
       await serversAPI.checkUpdates(id, securityOnly)
@@ -275,6 +307,34 @@ export default function Servers() {
         return 'Mise à jour'
       default:
         return 'Inconnu'
+    }
+  }
+
+  const getSeverityColor = (severity: string): 'error' | 'warning' | 'info' | 'default' => {
+    switch (severity) {
+      case 'critical':
+        return 'error'
+      case 'high':
+        return 'warning'
+      case 'medium':
+        return 'info'
+      default:
+        return 'default'
+    }
+  }
+
+  const getSeverityLabel = (severity: string): string => {
+    switch (severity) {
+      case 'critical':
+        return 'CRITIQUE'
+      case 'high':
+        return 'ÉLEVÉ'
+      case 'medium':
+        return 'MOYEN'
+      case 'low':
+        return 'FAIBLE'
+      default:
+        return severity.toUpperCase()
     }
   }
 
@@ -384,6 +444,19 @@ export default function Servers() {
                         label={`${server.critical_cves_count} CVE critiques`}
                         color="error"
                         size="small"
+                        onClick={() => handleShowCves(server)}
+                        sx={{ cursor: 'pointer' }}
+                      />
+                    </Box>
+                  )}
+                  {server.security_updates_count > 0 && server.critical_cves_count === 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Chip
+                        label="Voir les CVE"
+                        variant="outlined"
+                        size="small"
+                        onClick={() => handleShowCves(server)}
+                        sx={{ cursor: 'pointer' }}
                       />
                     </Box>
                   )}
@@ -502,6 +575,16 @@ export default function Servers() {
                         label={server.critical_cves_count}
                         color="error"
                         size="small"
+                        onClick={() => handleShowCves(server)}
+                        sx={{ cursor: 'pointer' }}
+                      />
+                    ) : server.security_updates_count > 0 ? (
+                      <Chip
+                        label="Voir"
+                        variant="outlined"
+                        size="small"
+                        onClick={() => handleShowCves(server)}
+                        sx={{ cursor: 'pointer' }}
                       />
                     ) : (
                       '0'
@@ -762,6 +845,76 @@ export default function Servers() {
             variant="contained"
           >
             {isUpdating ? 'Mise à jour en cours...' : 'Fermer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* CVE Details Dialog */}
+      <Dialog
+        open={cveDialogOpen}
+        onClose={() => setCveDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">
+              CVE détectés - {selectedServerName}
+            </Typography>
+            <IconButton onClick={() => setCveDialogOpen(false)} size="small">
+              <ErrorIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {loadingCves ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : selectedServerCves.length === 0 ? (
+            <Alert severity="info">
+              Aucun CVE détecté pour ce serveur. Vérifiez les mises à jour pour scanner les vulnérabilités.
+            </Alert>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>CVE ID</strong></TableCell>
+                    <TableCell><strong>Package</strong></TableCell>
+                    <TableCell><strong>Criticité</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {selectedServerCves.map((cve, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Typography variant="body2" fontFamily="monospace">
+                          {cve.id}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {cve.package}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={getSeverityLabel(cve.severity)}
+                          color={getSeverityColor(cve.severity)}
+                          size="small"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCveDialogOpen(false)}>
+            Fermer
           </Button>
         </DialogActions>
       </Dialog>

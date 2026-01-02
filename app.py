@@ -802,104 +802,12 @@ def trigger_check_now():
         }), 500
 
 
-# ==================== Scheduled Update Routes ====================
-
 @app.route('/api/schedules', methods=['GET'])
 @login_required
 def get_all_schedules():
     """Get all scheduled updates"""
     schedules = ScheduledUpdate.query.all()
     return jsonify([s.to_dict() for s in schedules]), 200
-
-
-@app.route('/api/servers/<int:server_id>/schedules', methods=['GET'])
-@login_required
-def get_server_schedules(server_id):
-    """Get scheduled updates for a specific server"""
-    schedules = ScheduledUpdate.query.filter_by(server_id=server_id).all()
-    return jsonify([s.to_dict() for s in schedules]), 200
-
-
-@app.route('/api/servers/<int:server_id>/schedules', methods=['POST'])
-@login_required
-def create_schedule(server_id):
-    """Create a new scheduled update"""
-    server = Server.query.get_or_404(server_id)
-    data = request.json
-
-    try:
-        schedule = ScheduledUpdate(
-            server_id=server.id,
-            enabled=data.get('enabled', True),
-            schedule_type=data['schedule_type'],
-            day_of_week=data.get('day_of_week'),
-            day_of_month=data.get('day_of_month'),
-            hour=data['hour'],
-            minute=data.get('minute', 0),
-            update_type=data.get('update_type', 'all'),
-            auto_reboot=data.get('auto_reboot', False)
-        )
-
-        db.session.add(schedule)
-        db.session.commit()
-
-        return jsonify(schedule.to_dict()), 201
-
-    except Exception as e:
-        logger.error(f"Error creating schedule: {str(e)}")
-        return jsonify({
-            'error': 'Error creating schedule',
-            'message': str(e)
-        }), 500
-
-
-@app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
-@login_required
-def update_schedule(schedule_id):
-    """Update a scheduled update"""
-    schedule = ScheduledUpdate.query.get_or_404(schedule_id)
-    data = request.json
-
-    try:
-        schedule.enabled = data.get('enabled', schedule.enabled)
-        schedule.schedule_type = data.get('schedule_type', schedule.schedule_type)
-        schedule.day_of_week = data.get('day_of_week', schedule.day_of_week)
-        schedule.day_of_month = data.get('day_of_month', schedule.day_of_month)
-        schedule.hour = data.get('hour', schedule.hour)
-        schedule.minute = data.get('minute', schedule.minute)
-        schedule.update_type = data.get('update_type', schedule.update_type)
-        schedule.auto_reboot = data.get('auto_reboot', schedule.auto_reboot)
-
-        db.session.commit()
-
-        return jsonify(schedule.to_dict()), 200
-
-    except Exception as e:
-        logger.error(f"Error updating schedule: {str(e)}")
-        return jsonify({
-            'error': 'Error updating schedule',
-            'message': str(e)
-        }), 500
-
-
-@app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
-@login_required
-def delete_schedule(schedule_id):
-    """Delete a scheduled update"""
-    schedule = ScheduledUpdate.query.get_or_404(schedule_id)
-
-    try:
-        db.session.delete(schedule)
-        db.session.commit()
-
-        return jsonify({'success': True}), 200
-
-    except Exception as e:
-        logger.error(f"Error deleting schedule: {str(e)}")
-        return jsonify({
-            'error': 'Error deleting schedule',
-            'message': str(e)
-        }), 500
 
 
 # Initialize database and start scheduler

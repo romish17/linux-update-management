@@ -79,9 +79,9 @@ class ServerProvisioner:
                 '/sbin/shutdown'
             ]
 
-        # Create sudoers rule
+        # Create sudoers rule with SETENV to allow environment variables
         commands_str = ', '.join(commands)
-        sudoers_line = f"{LUM_USER} ALL=(ALL) NOPASSWD: {commands_str}"
+        sudoers_line = f"{LUM_USER} ALL=(ALL) NOPASSWD: SETENV: {commands_str}"
 
         return sudoers_line
 

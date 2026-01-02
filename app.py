@@ -7,9 +7,11 @@ from models import db, Server, UpdateHistory, ScheduledUpdate, User
 from ssh_manager import SSHManager, get_update_manager, check_reboot_required, reboot_server
 from auto_update_manager import AutoUpdateConfigurator
 from server_provisioning import ServerProvisioner
+from scheduler import update_scheduler
 import os
 import json
 import time
+import logging
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -22,6 +24,13 @@ db.init_app(app)
 # Setup Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize scheduler
+update_scheduler.init_app(app, db)
 
 
 @login_manager.user_loader
@@ -724,6 +733,190 @@ def get_auto_update_status(server_id):
             'error': 'Error checking status',
             'message': str(e)
         }), 500
+
+
+# ==================== Auto-Check Management Routes ====================
+
+@app.route('/api/servers/<int:server_id>/auto-check', methods=['PUT'])
+@login_required
+def toggle_auto_check(server_id):
+    """Enable or disable automatic update checking for a server"""
+    server = Server.query.get_or_404(server_id)
+    data = request.json
+
+    try:
+        server.auto_check = data.get('auto_check', server.auto_check)
+        server.check_interval = data.get('check_interval', server.check_interval)
+
+        db.session.commit()
+
+        # Update scheduler job
+        if server.auto_check:
+            update_scheduler.add_server_job(server.id, server.check_interval)
+        else:
+            update_scheduler.remove_server_job(server.id)
+
+        return jsonify({
+            'success': True,
+            'message': f"Auto-check {'enabled' if server.auto_check else 'disabled'} for {server.name}",
+            'server': server.to_dict()
+        })
+
+    except Exception as e:
+        logger.error(f"Error toggling auto-check: {str(e)}")
+        return jsonify({
+            'error': 'Error updating auto-check settings',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/scheduler/jobs', methods=['GET'])
+@login_required
+def get_scheduler_jobs():
+    """Get list of scheduled jobs"""
+    try:
+        jobs = update_scheduler.get_jobs()
+        return jsonify(jobs), 200
+    except Exception as e:
+        return jsonify({
+            'error': 'Error getting scheduler jobs',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/scheduler/trigger', methods=['POST'])
+@login_required
+def trigger_check_now():
+    """Manually trigger update check for all servers"""
+    try:
+        update_scheduler.check_all_servers()
+        return jsonify({
+            'success': True,
+            'message': 'Update check triggered for all servers'
+        })
+    except Exception as e:
+        logger.error(f"Error triggering manual check: {str(e)}")
+        return jsonify({
+            'error': 'Error triggering check',
+            'message': str(e)
+        }), 500
+
+
+# ==================== Scheduled Update Routes ====================
+
+@app.route('/api/schedules', methods=['GET'])
+@login_required
+def get_all_schedules():
+    """Get all scheduled updates"""
+    schedules = ScheduledUpdate.query.all()
+    return jsonify([s.to_dict() for s in schedules]), 200
+
+
+@app.route('/api/servers/<int:server_id>/schedules', methods=['GET'])
+@login_required
+def get_server_schedules(server_id):
+    """Get scheduled updates for a specific server"""
+    schedules = ScheduledUpdate.query.filter_by(server_id=server_id).all()
+    return jsonify([s.to_dict() for s in schedules]), 200
+
+
+@app.route('/api/servers/<int:server_id>/schedules', methods=['POST'])
+@login_required
+def create_schedule(server_id):
+    """Create a new scheduled update"""
+    server = Server.query.get_or_404(server_id)
+    data = request.json
+
+    try:
+        schedule = ScheduledUpdate(
+            server_id=server.id,
+            enabled=data.get('enabled', True),
+            schedule_type=data['schedule_type'],
+            day_of_week=data.get('day_of_week'),
+            day_of_month=data.get('day_of_month'),
+            hour=data['hour'],
+            minute=data.get('minute', 0),
+            update_type=data.get('update_type', 'all'),
+            auto_reboot=data.get('auto_reboot', False)
+        )
+
+        db.session.add(schedule)
+        db.session.commit()
+
+        return jsonify(schedule.to_dict()), 201
+
+    except Exception as e:
+        logger.error(f"Error creating schedule: {str(e)}")
+        return jsonify({
+            'error': 'Error creating schedule',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['PUT'])
+@login_required
+def update_schedule(schedule_id):
+    """Update a scheduled update"""
+    schedule = ScheduledUpdate.query.get_or_404(schedule_id)
+    data = request.json
+
+    try:
+        schedule.enabled = data.get('enabled', schedule.enabled)
+        schedule.schedule_type = data.get('schedule_type', schedule.schedule_type)
+        schedule.day_of_week = data.get('day_of_week', schedule.day_of_week)
+        schedule.day_of_month = data.get('day_of_month', schedule.day_of_month)
+        schedule.hour = data.get('hour', schedule.hour)
+        schedule.minute = data.get('minute', schedule.minute)
+        schedule.update_type = data.get('update_type', schedule.update_type)
+        schedule.auto_reboot = data.get('auto_reboot', schedule.auto_reboot)
+
+        db.session.commit()
+
+        return jsonify(schedule.to_dict()), 200
+
+    except Exception as e:
+        logger.error(f"Error updating schedule: {str(e)}")
+        return jsonify({
+            'error': 'Error updating schedule',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/schedules/<int:schedule_id>', methods=['DELETE'])
+@login_required
+def delete_schedule(schedule_id):
+    """Delete a scheduled update"""
+    schedule = ScheduledUpdate.query.get_or_404(schedule_id)
+
+    try:
+        db.session.delete(schedule)
+        db.session.commit()
+
+        return jsonify({'success': True}), 200
+
+    except Exception as e:
+        logger.error(f"Error deleting schedule: {str(e)}")
+        return jsonify({
+            'error': 'Error deleting schedule',
+            'message': str(e)
+        }), 500
+
+
+# Initialize database and start scheduler
+with app.app_context():
+    db.create_all()
+
+    # Create default admin user if doesn't exist
+    if not User.query.filter_by(username='admin').first():
+        admin = User(username='admin', is_admin=True)
+        admin.set_password('admin')
+        db.session.add(admin)
+        db.session.commit()
+        logger.info("Created default admin user")
+
+    # Start the update scheduler
+    update_scheduler.start()
+    logger.info("Update scheduler started")
 
 
 if __name__ == '__main__':

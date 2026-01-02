@@ -9,6 +9,8 @@ export interface Server {
   last_check?: string;
   updates_available: number;
   status: 'online' | 'offline' | 'updating' | 'unknown';
+  auto_check: boolean;
+  check_interval: number;
   created_at: string;
 }
 

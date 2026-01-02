@@ -19,6 +19,8 @@ class Server(db.Model):
     last_check = db.Column(db.DateTime)
     updates_available = db.Column(db.Integer, default=0)
     status = db.Column(db.String(50), default='unknown')  # 'online', 'offline', 'updating', 'unknown'
+    auto_check = db.Column(db.Boolean, default=True)  # Enable automatic update checking
+    check_interval = db.Column(db.Integer, default=6)  # Check interval in hours
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     updates = db.relationship('UpdateHistory', back_populates='server', cascade='all, delete-orphan')
@@ -34,6 +36,8 @@ class Server(db.Model):
             'last_check': self.last_check.isoformat() if self.last_check else None,
             'updates_available': self.updates_available,
             'status': self.status,
+            'auto_check': self.auto_check,
+            'check_interval': self.check_interval,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

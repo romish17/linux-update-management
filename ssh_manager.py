@@ -97,10 +97,12 @@ class DebianUpdateManager:
                 }
 
             # Check for upgradable packages
+            # Note: grep returns exit code 1 when no matches found, which is normal
             result = ssh_manager.execute_command('apt list --upgradable 2>/dev/null | grep -v "Listing"')
 
-            if not result['success']:
-                error_msg = f"Failed to list upgradable packages: {result['error']}\nOutput: {result['output']}"
+            # Exit codes 0 (found results) and 1 (no results from grep) are both valid
+            if result['exit_status'] not in [0, 1]:
+                error_msg = f"Failed to list upgradable packages: {result['error']}\nOutput: {result['output']}\nExit code: {result['exit_status']}"
                 return {
                     'success': False,
                     'count': 0,
@@ -134,9 +136,13 @@ class DebianUpdateManager:
             if security_only:
                 packages = [p for p in packages if p['is_security']]
 
-            output_msg = f"Found {len(packages)} updates available"
-            if len(lines) > 0:
-                output_msg += f"\n\nUpgradable packages:\n{result['output']}"
+            # Generate appropriate message
+            if len(packages) == 0:
+                output_msg = "System is up to date - no updates available"
+            else:
+                output_msg = f"Found {len(packages)} updates available"
+                if len(lines) > 0:
+                    output_msg += f"\n\nUpgradable packages:\n{result['output']}"
 
             return {
                 'success': True,
@@ -226,7 +232,7 @@ class AlmaLinuxUpdateManager:
             else:
                 result = ssh_manager.execute_command(f'{pkg_manager} check-update -q')
 
-            # check-update returns exit code 100 if updates are available
+            # check-update returns exit code 100 if updates are available, 0 if no updates
             if result['exit_status'] in [0, 100] or result['success']:
                 lines = [line for line in result['output'].split('\n') if line.strip()]
 
@@ -252,9 +258,13 @@ class AlmaLinuxUpdateManager:
                             'is_security': is_security
                         })
 
-                output_msg = f"Found {len(packages)} updates available using {pkg_manager}"
-                if len(lines) > 0:
-                    output_msg += f"\n\nAvailable updates:\n{result['output']}"
+                # Generate appropriate message
+                if len(packages) == 0:
+                    output_msg = "System is up to date - no updates available"
+                else:
+                    output_msg = f"Found {len(packages)} updates available using {pkg_manager}"
+                    if len(lines) > 0:
+                        output_msg += f"\n\nAvailable updates:\n{result['output']}"
 
                 return {
                     'success': True,

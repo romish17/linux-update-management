@@ -115,7 +115,7 @@ class UpdateScheduler:
                 package_list=json.dumps(result.get('packages', [])),
                 success=result['success'],
                 duration=time.time() - start_time,
-                output=f"Automatic check: {result['count']} updates available"
+                output=result['output']  # Use the detailed output from update manager
             )
 
             self.db.session.add(history)

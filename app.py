@@ -6,6 +6,7 @@ from config import Config
 from models import db, Server, UpdateHistory, ScheduledUpdate, User
 from ssh_manager import SSHManager, get_update_manager, check_reboot_required, reboot_server
 from auto_update_manager import AutoUpdateConfigurator
+from server_provisioning import ServerProvisioner
 import os
 import json
 import time
@@ -151,6 +152,106 @@ def delete_server(server_id):
     db.session.delete(server)
     db.session.commit()
     return jsonify({'message': 'Server deleted successfully'}), 200
+
+
+# ========== Server Provisioning Routes ==========
+
+@app.route('/api/servers/provision', methods=['POST'])
+@login_required
+def provision_server():
+    """Provision a new server with automated SSH setup"""
+    data = request.json
+
+    required_fields = ['name', 'hostname', 'port', 'root_username', 'root_password', 'os_type']
+    if not all(field in data for field in required_fields):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    try:
+        provisioner = ServerProvisioner()
+
+        # Provision the server
+        result = provisioner.provision_server(
+            hostname=data['hostname'],
+            port=data['port'],
+            root_username=data['root_username'],
+            root_password=data['root_password'],
+            os_type=data['os_type']
+        )
+
+        if not result['success']:
+            return jsonify({
+                'error': 'Provisioning failed',
+                'details': result.get('error'),
+                'steps': result.get('steps', [])
+            }), 500
+
+        # Create server entry with lum-user credentials
+        server = Server(
+            name=data['name'],
+            hostname=data['hostname'],
+            port=data['port'],
+            username=result['username'],
+            ssh_key_path=result['ssh_key_path'],
+            os_type=data['os_type']
+        )
+
+        db.session.add(server)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Server provisioned and added successfully',
+            'server': server.to_dict(),
+            'provisioning_steps': result['steps']
+        }), 201
+
+    except Exception as e:
+        return jsonify({
+            'error': 'Provisioning failed',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/ssh-key', methods=['GET'])
+@login_required
+def get_ssh_key_info():
+    """Get SSH key information"""
+    try:
+        provisioner = ServerProvisioner()
+        info = provisioner.get_ssh_key_info()
+        return jsonify(info), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ssh-key/regenerate', methods=['POST'])
+@login_required
+def regenerate_ssh_key():
+    """Regenerate SSH key pair"""
+    try:
+        provisioner = ServerProvisioner()
+        private_key, public_key = provisioner.regenerate_ssh_key()
+
+        return jsonify({
+            'success': True,
+            'message': 'SSH key regenerated successfully',
+            'private_key_path': private_key,
+            'public_key_path': public_key
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ssh-key/public', methods=['GET'])
+@login_required
+def get_public_key():
+    """Get the public SSH key content"""
+    try:
+        provisioner = ServerProvisioner()
+        public_key = provisioner.get_public_key()
+        return jsonify({'public_key': public_key}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/servers/<int:server_id>/check', methods=['POST'])

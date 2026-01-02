@@ -19,6 +19,7 @@ import {
   Dashboard as DashboardIcon,
   Storage as StorageIcon,
   History as HistoryIcon,
+  Settings as SettingsIcon,
   Logout as LogoutIcon,
 } from '@mui/icons-material'
 import { authAPI } from '../services/api'
@@ -47,6 +48,7 @@ export default function Layout() {
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Serveurs', icon: <StorageIcon />, path: '/servers' },
     { text: 'Historique', icon: <HistoryIcon />, path: '/history' },
+    { text: 'Paramètres', icon: <SettingsIcon />, path: '/settings' },
   ]
 
   const drawer = (

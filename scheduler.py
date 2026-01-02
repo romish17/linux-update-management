@@ -104,6 +104,8 @@ class UpdateScheduler:
             # Update server info
             server.last_check = datetime.now()
             server.updates_available = result['count']
+            server.security_updates_count = result.get('security_count', 0)
+            server.critical_cves_count = len(result.get('critical_cves', []))
 
             # Log to history
             history = UpdateHistory(
@@ -113,6 +115,9 @@ class UpdateScheduler:
                 update_type='all',
                 packages_count=result['count'],
                 package_list=json.dumps(result.get('packages', [])),
+                security_count=result.get('security_count', 0),
+                cve_list=json.dumps(result.get('cve_info', [])),
+                critical_cves=json.dumps(result.get('critical_cves', [])),
                 success=result['success'],
                 duration=time.time() - start_time,
                 output=result['output']  # Use the detailed output from update manager

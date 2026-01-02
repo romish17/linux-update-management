@@ -18,6 +18,8 @@ class Server(db.Model):
     os_type = db.Column(db.String(50), nullable=False)  # 'debian' or 'almalinux'
     last_check = db.Column(db.DateTime)
     updates_available = db.Column(db.Integer, default=0)
+    security_updates_count = db.Column(db.Integer, default=0)  # Number of security updates
+    critical_cves_count = db.Column(db.Integer, default=0)  # Number of critical CVEs
     status = db.Column(db.String(50), default='unknown')  # 'online', 'offline', 'updating', 'unknown'
     auto_check = db.Column(db.Boolean, default=True)  # Enable automatic update checking
     check_interval = db.Column(db.Integer, default=6)  # Check interval in hours
@@ -35,6 +37,8 @@ class Server(db.Model):
             'os_type': self.os_type,
             'last_check': self.last_check.isoformat() if self.last_check else None,
             'updates_available': self.updates_available,
+            'security_updates_count': self.security_updates_count,
+            'critical_cves_count': self.critical_cves_count,
             'status': self.status,
             'auto_check': self.auto_check,
             'check_interval': self.check_interval,
@@ -52,6 +56,9 @@ class UpdateHistory(db.Model):
     update_type = db.Column(db.String(50), default='all')  # 'all', 'security'
     packages_count = db.Column(db.Integer, default=0)
     package_list = db.Column(db.Text)  # JSON array of package details
+    security_count = db.Column(db.Integer, default=0)  # Number of security updates
+    cve_list = db.Column(db.Text)  # JSON array of CVE details
+    critical_cves = db.Column(db.Text)  # JSON array of critical CVE IDs
     output = db.Column(db.Text)
     success = db.Column(db.Boolean, default=True)
     duration = db.Column(db.Float)  # Duration in seconds
@@ -69,6 +76,9 @@ class UpdateHistory(db.Model):
             'update_type': self.update_type,
             'packages_count': self.packages_count,
             'package_list': json.loads(self.package_list) if self.package_list else [],
+            'security_count': self.security_count,
+            'cve_list': json.loads(self.cve_list) if self.cve_list else [],
+            'critical_cves': json.loads(self.critical_cves) if self.critical_cves else [],
             'output': self.output,
             'success': self.success,
             'duration': self.duration,

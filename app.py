@@ -311,6 +311,8 @@ def check_updates(server_id):
 
         server.last_check = datetime.utcnow()
         server.updates_available = result['count']
+        server.security_updates_count = result.get('security_count', 0)
+        server.critical_cves_count = len(result.get('critical_cves', []))
 
         history = UpdateHistory(
             server_id=server.id,
@@ -319,6 +321,9 @@ def check_updates(server_id):
             update_type='security' if security_only else 'all',
             packages_count=result['count'],
             package_list=json.dumps(result.get('packages', [])),
+            security_count=result.get('security_count', 0),
+            cve_list=json.dumps(result.get('cve_info', [])),
+            critical_cves=json.dumps(result.get('critical_cves', [])),
             success=result['success'],
             duration=time.time() - start_time,
             output=result['output']

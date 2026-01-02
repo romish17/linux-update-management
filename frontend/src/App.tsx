@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Servers from './pages/Servers'
 import History from './pages/History'
 import Settings from './pages/Settings'
+import Schedules from './pages/Schedules'
 import Layout from './components/Layout'
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="servers" element={<Servers />} />
         <Route path="history" element={<History />} />
+        <Route path="schedules" element={<Schedules />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

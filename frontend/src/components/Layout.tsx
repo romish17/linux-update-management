@@ -19,6 +19,7 @@ import {
   Dashboard as DashboardIcon,
   Storage as StorageIcon,
   History as HistoryIcon,
+  Schedule as ScheduleIcon,
   Settings as SettingsIcon,
   Logout as LogoutIcon,
 } from '@mui/icons-material'
@@ -48,6 +49,7 @@ export default function Layout() {
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Serveurs', icon: <StorageIcon />, path: '/servers' },
     { text: 'Historique', icon: <HistoryIcon />, path: '/history' },
+    { text: 'Planifications', icon: <ScheduleIcon />, path: '/schedules' },
     { text: 'Paramètres', icon: <SettingsIcon />, path: '/settings' },
   ]
 

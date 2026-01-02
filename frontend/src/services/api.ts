@@ -62,6 +62,12 @@ export const serversAPI = {
 
   provision: (data: ProvisionRequest) =>
     api.post<ProvisionResponse>('/servers/provision', data),
+
+  updateAutoCheck: (id: number, autoCheck: boolean, checkInterval: number) =>
+    api.put(`/servers/${id}/auto-check`, {
+      auto_check: autoCheck,
+      check_interval: checkInterval,
+    }),
 };
 
 export const sshKeyAPI = {
@@ -73,6 +79,8 @@ export const sshKeyAPI = {
 };
 
 export const schedulesAPI = {
+  getAll: () => api.get<Schedule[]>('/schedules'),
+
   getForServer: (serverId: number) =>
     api.get<Schedule[]>(`/servers/${serverId}/schedules`),
 
@@ -83,6 +91,12 @@ export const schedulesAPI = {
     api.put<Schedule>(`/schedules/${scheduleId}`, schedule),
 
   delete: (scheduleId: number) => api.delete(`/schedules/${scheduleId}`),
+};
+
+export const schedulerAPI = {
+  getJobs: () => api.get('/scheduler/jobs'),
+
+  triggerNow: () => api.post('/scheduler/trigger'),
 };
 
 export const historyAPI = {

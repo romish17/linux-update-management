@@ -268,7 +268,8 @@ def check_updates(server_id):
             hostname=server.hostname,
             port=server.port,
             username=server.username,
-            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None,
+            password=None
         )
 
         connect_result = ssh.connect()
@@ -325,7 +326,19 @@ def check_updates(server_id):
         })
 
     except Exception as e:
+        logger.error(f"Error checking updates for server {server_id}: {str(e)}", exc_info=True)
         server.status = 'error'
+
+        # Log error in history
+        history = UpdateHistory(
+            server_id=server.id,
+            server_hostname=server.hostname,
+            action='check',
+            success=False,
+            duration=time.time() - start_time if 'start_time' in locals() else 0,
+            output=f"Error: {str(e)}"
+        )
+        db.session.add(history)
         db.session.commit()
 
         return jsonify({
@@ -349,7 +362,8 @@ def apply_updates(server_id):
             hostname=server.hostname,
             port=server.port,
             username=server.username,
-            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None,
+            password=None
         )
 
         connect_result = ssh.connect()
@@ -544,7 +558,8 @@ def create_schedule(server_id):
             hostname=server.hostname,
             port=server.port,
             username=server.username,
-            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None,
+            password=None
         )
 
         if not ssh.connect():
@@ -621,7 +636,8 @@ def update_schedule(schedule_id):
             hostname=server.hostname,
             port=server.port,
             username=server.username,
-            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None,
+            password=None
         )
 
         if ssh.connect():
@@ -690,7 +706,8 @@ def get_auto_update_status(server_id):
             hostname=server.hostname,
             port=server.port,
             username=server.username,
-            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None
+            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None,
+            password=None
         )
 
         if not ssh.connect():

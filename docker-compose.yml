@@ -13,6 +13,7 @@ services:
       - FLASK_ENV=production
       - SQLALCHEMY_DATABASE_URI=sqlite:////app/data/servers.db
       - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
+      - TZ=Europe/Paris
     restart: unless-stopped
     networks:
       - app-network
@@ -24,6 +25,8 @@ services:
     container_name: linux-update-frontend
     ports:
       - "3000:80"
+    environment:
+      - TZ=Europe/Paris
     depends_on:
       - backend
     restart: unless-stopped

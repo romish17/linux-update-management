@@ -434,6 +434,8 @@ export default function Servers() {
                         label={`${server.security_updates_count} mises à jour de sécurité`}
                         color="info"
                         size="small"
+                        onClick={() => handleShowCves(server)}
+                        sx={{ cursor: 'pointer' }}
                       />
                     </Box>
                   )}
@@ -563,6 +565,8 @@ export default function Servers() {
                         label={server.security_updates_count}
                         color="info"
                         size="small"
+                        onClick={() => handleShowCves(server)}
+                        sx={{ cursor: 'pointer' }}
                       />
                     ) : (
                       '0'

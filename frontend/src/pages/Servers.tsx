@@ -51,7 +51,6 @@ import {
   HourglassEmpty as PendingIcon,
   Loop as LoadingIcon,
   Warning as WarningIcon,
-  Security as SecurityIcon,
 } from '@mui/icons-material'
 import { serversAPI } from '../services/api'
 import { Server, ProvisioningStep } from '../types'

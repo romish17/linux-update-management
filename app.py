@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, request, jsonify
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from flask_cors import CORS
 from datetime import datetime
 from config import Config
 from models import db, Server, UpdateHistory, ScheduledUpdate, User
@@ -12,81 +13,76 @@ import time
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# Enable CORS for frontend development
+CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'http://frontend:3000'])
+
 db.init_app(app)
 
 # Setup Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
-login_manager.login_message = 'Veuillez vous connecter pour accéder à cette page.'
 
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    """Return JSON error for unauthorized requests"""
+    return jsonify({'error': 'Unauthorized', 'message': 'Authentication required'}), 401
+
+
 # Create tables
 with app.app_context():
     db.create_all()
 
 
-@app.route('/')
-@login_required
-def index():
-    """Main page"""
-    return render_template('index.html', user=current_user)
-
-
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/api/login', methods=['POST'])
 def login():
-    """Login page"""
+    """API Login endpoint"""
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return jsonify({'success': True, 'message': 'Already authenticated'}), 200
 
-    if request.method == 'POST':
-        data = request.get_json() if request.is_json else request.form
-        username = data.get('username')
-        password = data.get('password')
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request data'}), 400
 
-        if not username or not password:
-            if request.is_json:
-                return jsonify({'error': 'Nom d\'utilisateur et mot de passe requis'}), 400
-            flash('Nom d\'utilisateur et mot de passe requis', 'error')
-            return render_template('login.html')
+    username = data.get('username')
+    password = data.get('password')
 
-        user = User.query.filter_by(username=username).first()
+    if not username or not password:
+        return jsonify({'error': 'Nom d\'utilisateur et mot de passe requis'}), 400
 
-        if user and user.is_active and user.check_password(password):
-            # Update last login
-            user.last_login = datetime.utcnow()
-            db.session.commit()
+    user = User.query.filter_by(username=username).first()
 
-            login_user(user, remember=True)
+    if user and user.is_active and user.check_password(password):
+        # Update last login
+        user.last_login = datetime.utcnow()
+        db.session.commit()
 
-            if request.is_json:
-                return jsonify({
-                    'success': True,
-                    'message': 'Connexion réussie',
-                    'redirect': url_for('index')
-                })
+        login_user(user, remember=True)
 
-            next_page = request.args.get('next')
-            return redirect(next_page if next_page else url_for('index'))
-        else:
-            if request.is_json:
-                return jsonify({'error': 'Nom d\'utilisateur ou mot de passe incorrect'}), 401
-            flash('Nom d\'utilisateur ou mot de passe incorrect', 'error')
-
-    return render_template('login.html')
+        return jsonify({
+            'success': True,
+            'message': 'Connexion réussie',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'is_admin': user.is_admin
+            }
+        })
+    else:
+        return jsonify({'error': 'Nom d\'utilisateur ou mot de passe incorrect'}), 401
 
 
-@app.route('/logout')
+@app.route('/api/logout', methods=['POST'])
 @login_required
 def logout():
-    """Logout current user"""
+    """API Logout endpoint"""
     logout_user()
-    flash('Vous avez été déconnecté avec succès', 'success')
-    return redirect(url_for('login'))
+    return jsonify({'success': True, 'message': 'Déconnexion réussie'})
 
 
 @app.route('/api/servers', methods=['GET'])

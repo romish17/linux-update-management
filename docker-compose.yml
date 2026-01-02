@@ -1,24 +1,37 @@
 version: '3.8'
 
 services:
-  linux-update-manager:
-    build: .
-    container_name: linux-update-manager
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: linux-update-backend
     ports:
       - "5000:5000"
     volumes:
-      # Persist database
       - ./data:/app/data
-      # Mount SSH keys (read-only)
       - ~/.ssh:/root/.ssh:ro
     environment:
       - FLASK_ENV=production
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - DATABASE_URL=sqlite:///data/updates.db
+      - DATABASE_URL=sqlite:///data/servers.db
+      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
     restart: unless-stopped
     networks:
-      - update-manager-network
+      - app-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: linux-update-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
 
 networks:
-  update-manager-network:
+  app-network:
     driver: bridge

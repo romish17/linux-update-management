@@ -1,6 +1,6 @@
 # 🐧 Linux Update Manager
 
-Application web simple pour gérer les mises à jour de serveurs Linux (AlmaLinux/RHEL et Debian/Ubuntu).
+Application web moderne pour gérer les mises à jour de serveurs Linux (AlmaLinux/RHEL et Debian/Ubuntu) avec interface React + TypeScript.
 
 ## 📋 Fonctionnalités
 
@@ -8,23 +8,48 @@ Application web simple pour gérer les mises à jour de serveurs Linux (AlmaLinu
 - 🔍 Vérification des mises à jour disponibles (toutes ou sécurité uniquement)
 - ⬆️ Application des mises à jour à distance (toutes ou sécurité uniquement)
 - 🔐 Mises à jour de sécurité isolées pour installations ciblées
-- 📊 Tableau de bord avec statistiques en temps réel
+- 📊 Tableau de bord moderne avec statistiques en temps réel
 - 📜 Historique détaillé des opérations avec :
   - Liste complète des paquets installés
   - Versions avant/après mise à jour
   - Horodatage précis et durée d'exécution
   - Type de mise à jour (toutes/sécurité)
   - Nom d'hôte et serveur pour traçabilité
-- 🔐 Connexion SSH sécurisée (clé ou mot de passe)
+- 🔐 Authentification sécurisée avec Flask-Login
+- 🔐 Connexion SSH sécurisée (clé SSH)
 - 🎯 Support AlmaLinux/RHEL/CentOS et Debian/Ubuntu
+- 📅 Planification automatique des mises à jour
+- 🔄 Redémarrage automatique après mise à jour (optionnel)
+- 🎨 Interface Material-UI moderne et responsive
+- 🐳 Déploiement Docker simplifié
+
+## 🏗️ Stack Technique
+
+**Frontend:**
+- React 18 + TypeScript
+- Material-UI 5
+- Vite (build tool)
+- React Router 6
+- Axios pour les appels API
+
+**Backend:**
+- Python 3.11 + Flask
+- Flask-Login (authentification)
+- SQLAlchemy (ORM)
+- Paramiko (SSH)
+- APScheduler (planification)
+
+**Déploiement:**
+- Docker + Docker Compose
+- Nginx (serveur web frontend)
 
 ## 🛠️ Prérequis
 
 ### Sur le serveur de gestion (où l'app tourne)
 
-- Python 3.8 ou supérieur
-- pip (gestionnaire de paquets Python)
+- Docker et Docker Compose
 - Accès SSH vers les serveurs à gérer
+- Clés SSH configurées
 
 ### Sur les serveurs à gérer
 
@@ -33,7 +58,7 @@ Application web simple pour gérer les mises à jour de serveurs Linux (AlmaLinu
 - Pour Debian/Ubuntu: `apt` et `apt-get`
 - Pour AlmaLinux/RHEL: `yum` ou `dnf`
 
-## 🚀 Installation
+## 🚀 Installation avec Docker (Recommandé)
 
 ### 1. Cloner le repository
 
@@ -42,43 +67,75 @@ git clone <votre-repo>
 cd linux-update-management
 ```
 
-### 2. Créer un environnement virtuel Python
+### 2. Créer un utilisateur admin
+
+Avant de démarrer, créez un utilisateur admin:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # Sur Linux/Mac
-# ou
-venv\Scripts\activate  # Sur Windows
+# Option 1: Avec Docker
+docker-compose run --rm backend python create_admin.py
+
+# Option 2: Si vous avez Python installé localement
+python3 create_admin.py
 ```
 
-### 3. Installer les dépendances
+### 3. Configurer les variables d'environnement (optionnel)
+
+Créez un fichier `.env` pour personnaliser la configuration:
 
 ```bash
-pip install -r requirements.txt
-```
-
-### 4. Configurer l'application
-
-```bash
-cp .env.example .env
-```
-
-Éditez `.env` et changez les valeurs si nécessaire:
-
-```env
-FLASK_APP=app.py
-FLASK_ENV=production
 SECRET_KEY=votre-clé-secrète-unique-et-complexe
-DATABASE_URL=sqlite:///updates.db
 ```
 
-### 5. Lancer l'application
+### 4. Démarrer l'application
 
 ```bash
+docker-compose up -d
+```
+
+L'application sera accessible sur:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:5000
+
+### 5. Accéder à l'application
+
+Ouvrez votre navigateur et accédez à http://localhost:3000. Connectez-vous avec les identifiants créés à l'étape 2.
+
+## 🔧 Installation manuelle (Développement)
+
+<details>
+<summary>Cliquez pour voir les instructions de développement</summary>
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Le frontend sera accessible sur http://localhost:3000
+
+### Backend
+
+```bash
+# Créer un environnement virtuel
+python3 -m venv venv
+source venv/bin/activate
+
+# Installer les dépendances
+pip install -r requirements.txt
+
+# Créer un utilisateur admin
+python create_admin.py
+
+# Lancer le backend
 python app.py
 ```
 
-L'application sera accessible sur `http://localhost:5000`
+Le backend sera accessible sur http://localhost:5000
+
+</details>
 
 ## 🔧 Configuration des serveurs distants
 
@@ -169,50 +226,43 @@ L'historique détaillé est accessible en bas de page :
   - Liste complète des paquets avec versions
   - Sortie complète de la commande
 
-## 🐳 Déploiement avec Docker (optionnel)
+## 🐳 Commandes Docker Utiles
 
-Créer un fichier `Dockerfile`:
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y openssh-client && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-EXPOSE 5000
-
-CMD ["python", "app.py"]
-```
-
-Créer un fichier `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  web:
-    build: .
-    ports:
-      - "5000:5000"
-    volumes:
-      - ./updates.db:/app/updates.db
-      - ~/.ssh:/root/.ssh:ro
-    environment:
-      - FLASK_ENV=production
-      - SECRET_KEY=votre-clé-secrète
-    restart: unless-stopped
-```
-
-Lancer avec Docker Compose:
-
+### Démarrer l'application
 ```bash
 docker-compose up -d
+```
+
+### Arrêter l'application
+```bash
+docker-compose down
+```
+
+### Voir les logs
+```bash
+# Tous les services
+docker-compose logs -f
+
+# Frontend uniquement
+docker-compose logs -f frontend
+
+# Backend uniquement
+docker-compose logs -f backend
+```
+
+### Reconstruire après des modifications
+```bash
+docker-compose up -d --build
+```
+
+### Créer un utilisateur admin
+```bash
+docker-compose run --rm backend python create_admin.py
+```
+
+### Accéder au conteneur backend
+```bash
+docker-compose exec backend sh
 ```
 
 ## 🔒 Sécurité
@@ -260,19 +310,39 @@ ssh -i ~/.ssh/update_manager user@serveur "sudo apt-get update"
 
 ```
 linux-update-management/
-├── app.py              # Application Flask principale
-├── config.py           # Configuration
-├── models.py           # Modèles de base de données
-├── ssh_manager.py      # Gestion SSH et mises à jour
-├── requirements.txt    # Dépendances Python
-├── static/
-│   ├── css/
-│   │   └── style.css   # Styles CSS
-│   └── js/
-│       └── app.js      # JavaScript frontend
-├── templates/
-│   └── index.html      # Template HTML
-└── updates.db          # Base de données SQLite (créée auto)
+├── frontend/                    # Application React
+│   ├── src/
+│   │   ├── components/         # Composants réutilisables
+│   │   │   └── Layout.tsx      # Layout principal avec navigation
+│   │   ├── pages/              # Pages de l'application
+│   │   │   ├── Login.tsx       # Page de connexion
+│   │   │   ├── Dashboard.tsx   # Tableau de bord
+│   │   │   ├── Servers.tsx     # Gestion des serveurs
+│   │   │   └── History.tsx     # Historique des mises à jour
+│   │   ├── services/
+│   │   │   └── api.ts          # Client API Axios
+│   │   ├── types/
+│   │   │   └── index.ts        # Types TypeScript
+│   │   ├── theme/
+│   │   │   └── index.ts        # Thème Material-UI
+│   │   ├── App.tsx             # Composant principal
+│   │   └── main.tsx            # Point d'entrée
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── nginx.conf              # Configuration Nginx
+│
+├── app.py                       # API Flask
+├── config.py                    # Configuration
+├── models.py                    # Modèles SQLAlchemy
+├── ssh_manager.py               # Gestion SSH
+├── auto_update_manager.py       # Planification des mises à jour
+├── create_admin.py              # Script de création d'admin
+├── requirements.txt             # Dépendances Python
+├── Dockerfile.backend           # Image Docker backend
+├── Dockerfile.frontend          # Image Docker frontend
+├── docker-compose.yml           # Orchestration Docker
+└── data/
+    └── servers.db              # Base de données SQLite
 ```
 
 ## 🐛 Dépannage

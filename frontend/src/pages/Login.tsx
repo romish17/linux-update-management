@@ -26,7 +26,7 @@ export default function Login() {
     setLoading(true)
 
     try {
-      await authAPI.login(username, password)
+      await authAPI.login({ username, password })
       navigate('/')
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erreur de connexion')

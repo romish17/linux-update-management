@@ -245,13 +245,13 @@ export default function Dashboard() {
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={activity.status}
-                              color={activity.status === 'success' ? 'success' : 'error'}
+                              label={activity.success ? 'Succès' : 'Erreur'}
+                              color={activity.success ? 'success' : 'error'}
                               size="small"
                             />
                           </TableCell>
                           <TableCell>
-                            {format(new Date(activity.timestamp), 'Pp', { locale: fr })}
+                            {format(new Date(activity.created_at), 'Pp', { locale: fr })}
                           </TableCell>
                         </TableRow>
                       ))}

@@ -37,7 +37,6 @@ import {
   ViewModule as GridViewIcon,
   ViewList as ListViewIcon,
   Sync as SyncIcon,
-  RestartAlt as RebootIcon,
   Shield as ShieldIcon,
 } from '@mui/icons-material'
 import { serversAPI } from '../services/api'

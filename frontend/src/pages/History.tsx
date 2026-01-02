@@ -68,7 +68,10 @@ export default function History() {
 
   const filteredHistory = history.filter((item) => {
     if (filterAction !== 'all' && item.action !== filterAction) return false
-    if (filterStatus !== 'all' && item.status !== filterStatus) return false
+    if (filterStatus !== 'all') {
+      const status = item.success ? 'success' : 'error'
+      if (status !== filterStatus) return false
+    }
     return true
   })
 
@@ -198,16 +201,16 @@ export default function History() {
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {getStatusIcon(item.status)}
+                        {getStatusIcon(item.success ? 'success' : 'error')}
                         <Chip
-                          label={item.status}
-                          color={item.status === 'success' ? 'success' : 'error'}
+                          label={item.success ? 'Succès' : 'Erreur'}
+                          color={item.success ? 'success' : 'error'}
                           size="small"
                         />
                       </Box>
                     </TableCell>
                     <TableCell>
-                      {format(new Date(item.timestamp), 'Pp', { locale: fr })}
+                      {format(new Date(item.created_at), 'Pp', { locale: fr })}
                     </TableCell>
                     <TableCell>
                       {item.duration ? `${item.duration.toFixed(2)}s` : '-'}
@@ -220,12 +223,12 @@ export default function History() {
                           <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                             Détails
                           </Typography>
-                          {item.updates_applied !== undefined && item.updates_applied !== null && (
+                          {item.packages_count > 0 && (
                             <Typography variant="body2" color="text.secondary" gutterBottom>
-                              Mises à jour appliquées: {item.updates_applied}
+                              Paquets: {item.packages_count}
                             </Typography>
                           )}
-                          {item.security_only && (
+                          {item.update_type === 'security' && (
                             <Chip
                               label="Sécurité uniquement"
                               color="warning"
@@ -233,15 +236,7 @@ export default function History() {
                               sx={{ mb: 1 }}
                             />
                           )}
-                          {item.auto_reboot && (
-                            <Chip
-                              label="Redémarrage auto"
-                              color="info"
-                              size="small"
-                              sx={{ mb: 1, ml: 1 }}
-                            />
-                          )}
-                          {item.details && (
+                          {item.output && (
                             <>
                               <Typography variant="subtitle2" fontWeight="bold" sx={{ mt: 2, mb: 1 }}>
                                 Logs
@@ -259,7 +254,7 @@ export default function History() {
                                 }}
                               >
                                 <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                  {item.details}
+                                  {item.output}
                                 </pre>
                               </Paper>
                             </>

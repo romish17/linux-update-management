@@ -28,7 +28,7 @@ export interface UpdateHistory {
   server_id: number;
   server_name: string;
   server_hostname: string;
-  action: 'check' | 'update' | 'security_update' | 'error';
+  action: 'check' | 'update' | 'security_update' | 'reboot' | 'error';
   update_type: 'all' | 'security';
   packages_count: number;
   package_list: Package[];

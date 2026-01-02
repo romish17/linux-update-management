@@ -30,12 +30,9 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login: (credentials: LoginCredentials) =>
-    axios.post<AuthResponse>('/login', credentials, {
-      headers: { 'Content-Type': 'application/json' },
-      withCredentials: true,
-    }),
+    api.post<AuthResponse>('/login', credentials),
 
-  logout: () => axios.get('/logout', { withCredentials: true }),
+  logout: () => api.post('/logout'),
 };
 
 export const serversAPI = {

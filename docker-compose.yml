@@ -13,7 +13,7 @@ services:
       - ~/.ssh:/root/.ssh:ro
     environment:
       - FLASK_ENV=production
-      - DATABASE_URL=sqlite:///data/servers.db
+      - SQLALCHEMY_DATABASE_URI=sqlite:////app/data/servers.db
       - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
     restart: unless-stopped
     networks:

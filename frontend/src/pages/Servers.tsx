@@ -50,6 +50,8 @@ import {
   Error as ErrorIcon,
   HourglassEmpty as PendingIcon,
   Loop as LoadingIcon,
+  Warning as WarningIcon,
+  Security as SecurityIcon,
 } from '@mui/icons-material'
 import { serversAPI } from '../services/api'
 import { Server, ProvisioningStep } from '../types'
@@ -366,6 +368,26 @@ export default function Servers() {
                       />
                     </Box>
                   )}
+                  {server.security_updates_count > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Chip
+                        icon={<ShieldIcon />}
+                        label={`${server.security_updates_count} mises à jour de sécurité`}
+                        color="info"
+                        size="small"
+                      />
+                    </Box>
+                  )}
+                  {server.critical_cves_count > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Chip
+                        icon={<WarningIcon />}
+                        label={`${server.critical_cves_count} CVE critiques`}
+                        color="error"
+                        size="small"
+                      />
+                    </Box>
+                  )}
                   {server.last_check && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                       Dernière vérification: {format(new Date(server.last_check), 'Pp', { locale: fr })}
@@ -430,6 +452,8 @@ export default function Servers() {
                 <TableCell>OS</TableCell>
                 <TableCell>Statut</TableCell>
                 <TableCell>Mises à jour</TableCell>
+                <TableCell>Sécurité</TableCell>
+                <TableCell>CVE critiques</TableCell>
                 <TableCell>Dernière vérification</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -454,6 +478,30 @@ export default function Servers() {
                       <Chip
                         label={server.updates_available}
                         color="warning"
+                        size="small"
+                      />
+                    ) : (
+                      '0'
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {server.security_updates_count > 0 ? (
+                      <Chip
+                        icon={<ShieldIcon />}
+                        label={server.security_updates_count}
+                        color="info"
+                        size="small"
+                      />
+                    ) : (
+                      '0'
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {server.critical_cves_count > 0 ? (
+                      <Chip
+                        icon={<WarningIcon />}
+                        label={server.critical_cves_count}
+                        color="error"
                         size="small"
                       />
                     ) : (

@@ -140,10 +140,29 @@ class DebianUpdateManager:
             # Get CVE information for security updates
             cve_info = []
             critical_cves = []
+
+            # Debug logging
+            logger.info(f"Total packages: {len(packages)}, Security packages: {len(security_packages)}")
+
             if security_packages:
+                logger.info(f"Security packages found: {security_packages[:5]}")  # Log first 5
                 cve_result = DebianUpdateManager.get_cve_info(ssh_manager, security_packages)
                 cve_info = cve_result.get('cves', [])
                 critical_cves = cve_result.get('critical', [])
+                logger.info(f"CVE detection result: {len(cve_info)} CVEs found, {len(critical_cves)} critical")
+            else:
+                # No security packages detected via -security repo
+                # But we still check all packages for CVE (limited to first 10)
+                logger.warning("No -security packages detected - checking all packages for CVE")
+                all_package_names = [p['name'] for p in packages]
+                if all_package_names:
+                    cve_result = DebianUpdateManager.get_cve_info(ssh_manager, all_package_names)
+                    cve_info = cve_result.get('cves', [])
+                    critical_cves = cve_result.get('critical', [])
+                    # Update security package count based on CVE findings
+                    if cve_info:
+                        security_packages = list(set([cve['package'] for cve in cve_info]))
+                        logger.info(f"CVE found in {len(security_packages)} packages: {len(cve_info)} CVEs, {len(critical_cves)} critical")
 
             # Filter security updates if requested
             if security_only:
@@ -189,11 +208,20 @@ class DebianUpdateManager:
             cves = []
             critical = []
 
+            logger.info(f"Starting CVE detection for {len(packages)} packages (checking first 10)")
+
             # Try to get CVE info from apt changelog (limit to first 10 to avoid slowdown)
             for package in packages[:10]:
-                # Get package changelog which often contains CVE references
+                # Method 1: apt-cache show (fast but may not have CVE info)
                 changelog_cmd = f"apt-cache show {package} 2>/dev/null | grep -i 'cve-' || true"
                 result = ssh_manager.execute_command(changelog_cmd)
+
+                # Method 2: If no CVE found, try apt-get changelog (slower but more complete)
+                if not result['output']:
+                    changelog_cmd = f"apt-get changelog {package} 2>/dev/null | head -50 | grep -i 'cve-' || true"
+                    result = ssh_manager.execute_command(changelog_cmd)
+
+                logger.debug(f"CVE check for {package}: output={'found' if result['output'] else 'none'}")
 
                 if result['output']:
                     # Extract CVE IDs

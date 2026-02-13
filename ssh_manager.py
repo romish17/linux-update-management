@@ -2,9 +2,18 @@ import paramiko
 import re
 import json
 import logging
+import requests
+from datetime import datetime, timedelta
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+# Cache for Debian Security Tracker data
+_security_tracker_cache = {
+    'data': None,
+    'timestamp': None,
+    'ttl': timedelta(hours=6)  # Cache for 6 hours
+}
 
 
 class SSHManager:
@@ -79,6 +88,129 @@ class SSHManager:
             elif 'almalinux' in output or 'rhel' in output or 'centos' in output or 'rocky' in output:
                 return 'almalinux'
         return 'unknown'
+
+
+def get_debian_security_tracker_data():
+    """
+    Fetch CVE data from Debian Security Tracker
+    Returns cached data if available and not expired
+    """
+    global _security_tracker_cache
+
+    now = datetime.now()
+
+    # Check if cache is valid
+    if (_security_tracker_cache['data'] is not None and
+        _security_tracker_cache['timestamp'] is not None and
+        now - _security_tracker_cache['timestamp'] < _security_tracker_cache['ttl']):
+        logger.info("Using cached Debian Security Tracker data")
+        return _security_tracker_cache['data']
+
+    # Fetch fresh data
+    try:
+        logger.info("Fetching fresh data from Debian Security Tracker...")
+        url = "https://security-tracker.debian.org/tracker/data/json"
+        response = requests.get(url, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+            _security_tracker_cache['data'] = data
+            _security_tracker_cache['timestamp'] = now
+            logger.info(f"Successfully fetched {len(data)} CVE entries from Debian Security Tracker")
+            return data
+        else:
+            logger.error(f"Failed to fetch Debian Security Tracker data: HTTP {response.status_code}")
+            return _security_tracker_cache['data']  # Return old cache if available
+
+    except Exception as e:
+        logger.error(f"Error fetching Debian Security Tracker data: {str(e)}")
+        return _security_tracker_cache['data']  # Return old cache if available
+
+
+def find_cves_for_packages(packages, debian_version='bookworm'):
+    """
+    Find CVEs for given packages using Debian Security Tracker
+
+    Args:
+        packages: List of package names
+        debian_version: Debian release codename (bookworm, bullseye, etc.)
+
+    Returns:
+        List of CVE dictionaries with id, package, severity
+    """
+    security_data = get_debian_security_tracker_data()
+
+    if not security_data:
+        logger.warning("No Debian Security Tracker data available")
+        return []
+
+    cves = []
+    critical_cves = []
+
+    # Map severity from Debian to our scale
+    severity_map = {
+        'high': 'critical',
+        'medium': 'high',
+        'low': 'medium',
+        'unimportant': 'low'
+    }
+
+    for cve_id, cve_data in security_data.items():
+        if not cve_id.startswith('CVE-'):
+            continue
+
+        # Check if any of our packages are affected
+        for release, release_data in cve_data.get('releases', {}).items():
+            # Match debian version (bookworm = debian 12, bullseye = debian 11, etc.)
+            if debian_version not in release:
+                continue
+
+            for package in packages:
+                # Get package source name (some binary packages come from different source)
+                package_base = package.split(':')[0]  # Remove architecture
+
+                # Check if package is affected
+                if package_base in str(release_data):
+                    status = release_data.get('status', 'unknown')
+                    urgency = release_data.get('urgency', 'medium').lower()
+
+                    # Only include open/unfixed CVEs
+                    if status in ['open', 'needed', '']:
+                        severity = severity_map.get(urgency, 'medium')
+
+                        # Check if it's critical based on package importance
+                        critical_packages = [
+                            'linux-image', 'linux-headers', 'kernel',
+                            'openssl', 'libssl',
+                            'openssh', 'ssh',
+                            'sudo', 'systemd',
+                            'glibc', 'libc6',
+                            'bind9', 'apache2', 'nginx'
+                        ]
+
+                        if any(crit_pkg in package_base for crit_pkg in critical_packages):
+                            if severity in ['high', 'medium']:
+                                severity = 'critical'
+
+                        cve_entry = {
+                            'id': cve_id,
+                            'package': package,
+                            'severity': severity
+                        }
+
+                        # Avoid duplicates
+                        if not any(c['id'] == cve_id and c['package'] == package for c in cves):
+                            cves.append(cve_entry)
+
+                            if severity == 'critical':
+                                critical_cves.append(cve_id)
+
+                        break  # Found package, move to next CVE
+
+    return {
+        'cves': cves,
+        'critical': list(set(critical_cves))  # Remove duplicates
+    }
 
 
 class DebianUpdateManager:
@@ -209,13 +341,45 @@ class DebianUpdateManager:
             }
 
     @staticmethod
-    def get_cve_info(ssh_manager, packages):
-        """Get CVE information for security packages"""
+    def detect_debian_version(ssh_manager):
+        """Detect Debian version codename"""
         try:
+            result = ssh_manager.execute_command('lsb_release -cs 2>/dev/null || cat /etc/debian_version')
+            if result['success'] and result['output']:
+                version = result['output'].strip().lower()
+                # Map version numbers to codenames if needed
+                version_map = {
+                    '12': 'bookworm',
+                    '11': 'bullseye',
+                    '10': 'buster'
+                }
+                return version_map.get(version.split('.')[0], version)
+            return 'bookworm'  # Default to latest stable
+        except:
+            return 'bookworm'
+
+    @staticmethod
+    def get_cve_info(ssh_manager, packages):
+        """Get CVE information for security packages using Debian Security Tracker"""
+        try:
+            logger.info(f"Starting CVE detection for {len(packages)} packages")
+
+            # Detect Debian version
+            debian_version = DebianUpdateManager.detect_debian_version(ssh_manager)
+            logger.info(f"Detected Debian version: {debian_version}")
+
+            # Method 1: Use Debian Security Tracker (most reliable for Debian)
+            logger.info("Querying Debian Security Tracker API...")
+            tracker_result = find_cves_for_packages(packages, debian_version=debian_version)
+
+            if tracker_result['cves']:
+                logger.info(f"Debian Security Tracker found {len(tracker_result['cves'])} CVEs, {len(tracker_result['critical'])} critical")
+                return tracker_result
+
+            # Method 2: Fallback to apt-cache show if tracker returns nothing
+            logger.info("No CVEs from tracker, falling back to apt-cache show...")
             cves = []
             critical = []
-
-            logger.info(f"Starting CVE detection for {len(packages)} packages (checking first 10)")
 
             # Use only apt-cache show (fast) - skip apt-get changelog (too slow)
             for package in packages[:10]:

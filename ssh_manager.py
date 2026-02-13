@@ -1,7 +1,10 @@
 import paramiko
 import re
 import json
+import logging
 from config import Config
+
+logger = logging.getLogger(__name__)
 
 
 class SSHManager:

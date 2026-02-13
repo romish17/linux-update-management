@@ -307,6 +307,9 @@ def check_updates(server_id):
         update_manager = get_update_manager(server.os_type)
         result = update_manager.check_updates(ssh, security_only=security_only)
 
+        # Debug logging
+        logger.info(f"Check updates result for {server.name}: count={result['count']}, security={result.get('security_count', 0)}, cves={len(result.get('cve_info', []))}, critical={len(result.get('critical_cves', []))}")
+
         ssh.disconnect()
 
         server.last_check = datetime.utcnow()

@@ -60,6 +60,16 @@ export const serversAPI = {
       auto_reboot: autoReboot,
     }),
 
+  getUpdateProgress: (id: number) =>
+    api.get<{
+      status: string;
+      progress: number;
+      message: string;
+      output: string;
+      success: boolean | null;
+      error: string | null;
+    }>(`/servers/${id}/update/progress`),
+
   provision: (data: ProvisionRequest) =>
     api.post<ProvisionResponse>('/servers/provision', data),
 

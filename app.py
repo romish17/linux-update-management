@@ -12,6 +12,8 @@ import os
 import json
 import time
 import logging
+import threading
+from collections import defaultdict
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -31,6 +33,16 @@ logger = logging.getLogger(__name__)
 
 # Initialize scheduler
 update_scheduler.init_app(app, db)
+
+# Global progress tracking for updates
+update_progress = defaultdict(lambda: {
+    'status': 'idle',
+    'progress': 0,
+    'message': '',
+    'output': '',
+    'success': None,
+    'error': None
+})
 
 
 @login_manager.user_loader
@@ -367,96 +379,161 @@ def check_updates(server_id):
         }), 500
 
 
+def _run_updates_with_progress(server_id, security_only, auto_reboot):
+    """Run updates in background thread with progress tracking"""
+    with app.app_context():
+        try:
+            server = Server.query.get(server_id)
+            if not server:
+                update_progress[server_id]['status'] = 'error'
+                update_progress[server_id]['error'] = 'Server not found'
+                return
+
+            start_time = time.time()
+
+            # Update progress: Connecting
+            update_progress[server_id]['status'] = 'running'
+            update_progress[server_id]['progress'] = 10
+            update_progress[server_id]['message'] = f'Connexion à {server.name}...'
+
+            ssh = SSHManager(
+                hostname=server.hostname,
+                port=server.port,
+                username=server.username,
+                ssh_key_path=server.ssh_key_path if server.ssh_key_path else None,
+                password=None
+            )
+
+            connect_result = ssh.connect()
+            if connect_result is not True:
+                server.status = 'offline'
+                db.session.commit()
+                update_progress[server_id]['status'] = 'error'
+                update_progress[server_id]['error'] = f'Connection failed: {connect_result[1]}'
+                return
+
+            server.status = 'updating'
+            db.session.commit()
+
+            # Update progress: Applying updates
+            update_progress[server_id]['progress'] = 30
+            update_progress[server_id]['message'] = 'Application des mises à jour...'
+
+            update_manager = get_update_manager(server.os_type)
+            result = update_manager.apply_updates(ssh, security_only=security_only)
+
+            update_progress[server_id]['output'] = result['output']
+
+            # Update progress: Checking reboot
+            update_progress[server_id]['progress'] = 80
+            update_progress[server_id]['message'] = 'Vérification du redémarrage...'
+
+            # Check if reboot is needed
+            reboot_required = False
+            reboot_message = ''
+            if result['success'] and auto_reboot:
+                reboot_required = check_reboot_required(ssh, server.os_type)
+                if reboot_required:
+                    update_progress[server_id]['message'] = 'Planification du redémarrage...'
+                    reboot_result = reboot_server(ssh, delay_minutes=1)
+                    reboot_message = reboot_result['message'] if reboot_result['success'] else 'Failed to schedule reboot'
+
+            ssh.disconnect()
+
+            server.status = 'online'
+            server.updates_available = 0
+            server.last_check = datetime.utcnow()
+
+            action = 'security_update' if security_only else 'update'
+
+            # Add reboot info to output if applicable
+            output = result['output']
+            if reboot_required and reboot_message:
+                output += f"\n\n=== REBOOT ===\n{reboot_message}"
+
+            history = UpdateHistory(
+                server_id=server.id,
+                server_hostname=server.hostname,
+                action=action,
+                update_type='security' if security_only else 'all',
+                packages_count=result['count'],
+                package_list=json.dumps(result.get('packages', [])),
+                success=result['success'],
+                duration=time.time() - start_time,
+                output=output
+            )
+
+            db.session.add(history)
+            db.session.commit()
+
+            # Update progress: Complete
+            update_progress[server_id]['status'] = 'completed'
+            update_progress[server_id]['progress'] = 100
+            update_progress[server_id]['message'] = f'Mises à jour terminées - {result["count"]} packages'
+            update_progress[server_id]['output'] = output
+            update_progress[server_id]['success'] = result['success']
+            update_progress[server_id]['reboot_required'] = reboot_required
+            update_progress[server_id]['reboot_message'] = reboot_message
+
+        except Exception as e:
+            logger.error(f"Error in update thread for server {server_id}: {str(e)}")
+            with app.app_context():
+                server = Server.query.get(server_id)
+                if server:
+                    server.status = 'error'
+                    db.session.commit()
+
+            update_progress[server_id]['status'] = 'error'
+            update_progress[server_id]['error'] = str(e)
+            update_progress[server_id]['message'] = f'Erreur: {str(e)}'
+
+
 @app.route('/api/servers/<int:server_id>/update', methods=['POST'])
 @login_required
 def apply_updates(server_id):
-    """Apply updates on a server"""
+    """Apply updates on a server (async with progress tracking)"""
     server = Server.query.get_or_404(server_id)
     security_only = request.json.get('security_only', False) if request.json else False
     auto_reboot = request.json.get('auto_reboot', True) if request.json else True
 
-    try:
-        start_time = time.time()
-
-        ssh = SSHManager(
-            hostname=server.hostname,
-            port=server.port,
-            username=server.username,
-            ssh_key_path=server.ssh_key_path if server.ssh_key_path else None,
-            password=None
-        )
-
-        connect_result = ssh.connect()
-        if connect_result is not True:
-            server.status = 'offline'
-            db.session.commit()
-
-            return jsonify({
-                'error': 'Connection failed',
-                'message': connect_result[1]
-            }), 500
-
-        server.status = 'updating'
-        db.session.commit()
-
-        update_manager = get_update_manager(server.os_type)
-        result = update_manager.apply_updates(ssh, security_only=security_only)
-
-        # Check if reboot is needed
-        reboot_required = False
-        reboot_message = ''
-        if result['success'] and auto_reboot:
-            reboot_required = check_reboot_required(ssh, server.os_type)
-            if reboot_required:
-                reboot_result = reboot_server(ssh, delay_minutes=1)
-                reboot_message = reboot_result['message'] if reboot_result['success'] else 'Failed to schedule reboot'
-
-        ssh.disconnect()
-
-        server.status = 'online'
-        server.updates_available = 0
-        server.last_check = datetime.utcnow()
-
-        action = 'security_update' if security_only else 'update'
-
-        # Add reboot info to output if applicable
-        output = result['output']
-        if reboot_required and reboot_message:
-            output += f"\n\n=== REBOOT ===\n{reboot_message}"
-
-        history = UpdateHistory(
-            server_id=server.id,
-            server_hostname=server.hostname,
-            action=action,
-            update_type='security' if security_only else 'all',
-            packages_count=result['count'],
-            package_list=json.dumps(result.get('packages', [])),
-            success=result['success'],
-            duration=time.time() - start_time,
-            output=output
-        )
-
-        db.session.add(history)
-        db.session.commit()
-
+    # Check if update is already in progress
+    if update_progress[server_id]['status'] == 'running':
         return jsonify({
-            'success': True,
-            'packages_updated': result['count'],
-            'packages': result.get('packages', []),
-            'reboot_required': reboot_required,
-            'reboot_scheduled': reboot_required and auto_reboot,
-            'reboot_message': reboot_message,
-            'output': output
-        })
+            'error': 'Update already in progress',
+            'message': 'An update is already running on this server'
+        }), 409
 
-    except Exception as e:
-        server.status = 'error'
-        db.session.commit()
+    # Reset progress
+    update_progress[server_id] = {
+        'status': 'starting',
+        'progress': 0,
+        'message': 'Démarrage de la mise à jour...',
+        'output': '',
+        'success': None,
+        'error': None
+    }
 
-        return jsonify({
-            'error': 'Error applying updates',
-            'message': str(e)
-        }), 500
+    # Start update in background thread
+    thread = threading.Thread(
+        target=_run_updates_with_progress,
+        args=(server_id, security_only, auto_reboot)
+    )
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({
+        'success': True,
+        'message': 'Update started',
+        'server_id': server_id
+    })
+
+
+@app.route('/api/servers/<int:server_id>/update/progress', methods=['GET'])
+@login_required
+def get_update_progress(server_id):
+    """Get current update progress for a server"""
+    progress = update_progress[server_id]
+    return jsonify(progress)
 
 
 @app.route('/api/history', methods=['GET'])

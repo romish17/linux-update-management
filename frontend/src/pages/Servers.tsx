@@ -257,27 +257,50 @@ export default function Servers() {
     // Open progress modal
     setUpdatingServerName(server.name)
     setUpdateStatus('running')
-    setUpdateMessage('Connexion au serveur...')
+    setUpdateMessage('Démarrage de la mise à jour...')
     setUpdateOutput('')
     setUpdateProgressOpen(true)
     setIsUpdating(true)
 
     try {
-      setUpdateMessage('Application des mises à jour en cours...')
-      const response = await serversAPI.applyUpdates(id, securityOnly, autoReboot)
+      // Start update (returns immediately)
+      await serversAPI.applyUpdates(id, securityOnly, autoReboot)
 
-      setUpdateStatus('success')
-      setUpdateMessage('Mises à jour appliquées avec succès !')
-      setUpdateOutput(response.data.output || '')
-      setIsUpdating(false)
+      // Poll for progress
+      const pollProgress = async () => {
+        try {
+          const response = await serversAPI.getUpdateProgress(id)
+          const progress = response.data
 
-      // Reload servers after 2 seconds
-      setTimeout(() => {
-        loadServers()
-      }, 2000)
+          setUpdateMessage(progress.message || 'En cours...')
+          setUpdateOutput(progress.output || '')
+
+          if (progress.status === 'completed') {
+            setUpdateStatus('success')
+            setUpdateMessage(progress.message || 'Mises à jour appliquées avec succès !')
+            setIsUpdating(false)
+            loadServers()
+          } else if (progress.status === 'error') {
+            setUpdateStatus('error')
+            setUpdateMessage(progress.error || 'Erreur lors de la mise à jour')
+            setIsUpdating(false)
+          } else {
+            // Continue polling
+            setTimeout(pollProgress, 1000)
+          }
+        } catch (err: any) {
+          setUpdateStatus('error')
+          setUpdateMessage('Erreur lors de la récupération de la progression')
+          setIsUpdating(false)
+        }
+      }
+
+      // Start polling
+      setTimeout(pollProgress, 500)
+
     } catch (err: any) {
       setUpdateStatus('error')
-      setUpdateMessage('Erreur lors de l\'application des mises à jour')
+      setUpdateMessage('Erreur lors du démarrage de la mise à jour')
       setUpdateOutput(err.response?.data?.message || err.message || 'Erreur inconnue')
       setIsUpdating(false)
       setError(err.response?.data?.error || 'Erreur lors de la mise à jour')

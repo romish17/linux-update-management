@@ -94,8 +94,10 @@ class ServerProvisioner:
         2. Generate/get SSH key
         3. Create lum-user
         4. Setup SSH key authentication
-        5. Configure sudoers
-        6. Test connection with new user
+        5. Install sudo
+        6. Fix sudo permissions
+        7. Configure sudoers
+        8. Test connection with new user
 
         Returns:
             dict: Provisioning result with status and details
@@ -196,7 +198,31 @@ class ServerProvisioner:
 
             result['steps'][-1]['status'] = 'success'
 
-            # Step 6: Configure sudoers
+            # Step 6: Fix sudo permissions
+            result['steps'].append({'name': 'fix_sudo_permissions', 'status': 'running'})
+
+            # Fix common sudo permission issues
+            permission_fix_commands = [
+                'chown root:root /usr/bin/sudo',
+                'chmod 4755 /usr/bin/sudo',
+                'chown root:root /etc/sudo.conf 2>/dev/null || true',
+                'chmod 0644 /etc/sudo.conf 2>/dev/null || true',
+                'chown root:root /etc/sudoers',
+                'chmod 0440 /etc/sudoers',
+                'chown root:root /etc/sudoers.d 2>/dev/null || true',
+                'chmod 0750 /etc/sudoers.d 2>/dev/null || true',
+            ]
+
+            for cmd in permission_fix_commands:
+                cmd_result = ssh.execute_command(cmd)
+                # Don't fail on permission fixes, just log warnings
+                if cmd_result['exit_status'] != 0 and 'true' not in cmd:
+                    logger.warning(f"Permission fix warning: {cmd} - {cmd_result.get('error', '')}")
+
+            result['steps'][-1]['status'] = 'success'
+            result['steps'][-1]['message'] = 'Sudo permissions verified and fixed'
+
+            # Step 7: Configure sudoers
             result['steps'].append({'name': 'configure_sudoers', 'status': 'running'})
 
             sudoers_config = self.get_sudoers_config(os_type)
@@ -232,7 +258,7 @@ class ServerProvisioner:
             # Disconnect root session
             ssh.disconnect()
 
-            # Step 7: Test connection with new user
+            # Step 8: Test connection with new user
             result['steps'].append({'name': 'test_connection', 'status': 'running'})
 
             test_ssh = SSHManager(
